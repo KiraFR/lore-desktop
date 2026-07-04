@@ -28,8 +28,8 @@
   <p class="muted sub">Connect to your Lore server to browse, commit, and push.</p>
 
   <div class="form">
-    <label>Lore server</label>
-    <input bind:value={serverUrl} placeholder="lore://host:41337" disabled={busy} />
+    <label for="server-url">Lore server</label>
+    <input id="server-url" bind:value={serverUrl} placeholder="lore://host:41337" disabled={busy} />
 
     <button class="disclose" onclick={() => (showAdvanced = !showAdvanced)}>
       <Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size={14} /> Advanced
