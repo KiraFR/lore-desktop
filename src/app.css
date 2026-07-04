@@ -1,26 +1,52 @@
 :root {
-  --bg: #ffffff; --bg-elev: #f6f7f9; --border: #e3e6ea;
-  --text: #1c1f23; --muted: #6b7280; --accent: #3b82f6; --accent-text: #ffffff;
-  --danger: #dc2626; --add: #16a34a; --modify: #d97706; --delete: #dc2626;
-  --radius: 8px; --font: system-ui, -apple-system, "Segoe UI", sans-serif; --mono: ui-monospace, "Cascadia Code", monospace;
+  --bg: #1b1d21;
+  --bg-elev: #212429;
+  --panel: #24272c;
+  --panel-hover: #2a2e34;
+  --border: #33373d;
+  --border-strong: #3d424a;
+  --text: #e6e8eb;
+  --text-muted: #9198a1;
+  --text-dim: #767c85;
+  --accent: #3067d4;
+  --accent-hover: #3a72e0;
+  --accent-soft: #14304d;
+  --accent-ring: rgba(48, 103, 212, 0.35);
+  --on-accent: #ffffff;
+  --added: #3fb950;
+  --modified: #d29922;
+  --deleted: #f85149;
+  --warn-bg: #3d2f0f;
+  --warn-text: #e3b341;
+  --radius: 7px;
+  --radius-lg: 10px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181d; --bg-elev: #1e2127; --border: #2b2f36;
-    --text: #e6e8eb; --muted: #9aa2ad; --accent: #4f8ef7;
-  }
-}
+
+/* Add a theme later by overriding only the tokens it changes, e.g.
+   :root[data-theme="light"] { --bg: #ffffff; --text: #1c1f23; ... }
+   and setting document.documentElement.dataset.theme from saved config.
+   No component changes needed — components read tokens only. */
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { font-family: var(--font); color: var(--text); background: var(--bg); font-size: 14px; }
-button { font: inherit; cursor: pointer; border-radius: var(--radius); border: 1px solid var(--border); padding: 7px 12px; background: var(--bg-elev); color: var(--text); transition: filter .12s; }
-button:hover:not(:disabled) { filter: brightness(1.05); }
+body { font-family: var(--font-sans); color: var(--text); background: var(--bg); font-size: 13.5px; }
+
+button { font: inherit; cursor: pointer; border-radius: var(--radius); border: 1px solid var(--border); padding: 6px 12px; background: var(--panel); color: var(--text); transition: background .12s, border-color .12s; }
+button:hover:not(:disabled) { background: var(--panel-hover); border-color: var(--border-strong); }
 button:disabled { opacity: .5; cursor: default; }
-button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
-button.ghost { background: transparent; border-color: transparent; color: var(--accent); padding: 4px 6px; }
-input, textarea { font: inherit; width: 100%; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.muted { color: var(--muted); }
-.error { color: var(--danger); }
-.row { display: flex; align-items: center; gap: 8px; }
+button.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+button.accent:hover:not(:disabled) { background: var(--accent-hover); }
+button.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+button.ghost:hover:not(:disabled) { background: var(--panel); color: var(--text); }
+
+input, textarea { font: inherit; width: 100%; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); }
+input::placeholder, textarea::placeholder { color: var(--text-dim); }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
+a { color: var(--accent); text-decoration: none; }
+.muted { color: var(--text-muted); }
+.dim { color: var(--text-dim); }
+.error { color: var(--deleted); }
 .spacer { flex: 1; }
