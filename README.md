@@ -1,47 +1,37 @@
-# Svelte + TS + Vite
+# Lore Desktop
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+A GitHub-Desktop-style client for the [Lore](https://github.com/EpicGames/lore) VCS — sign in to any Lore server + SSO, pick a repository, review changes, commit, push, and sync. Built with **Tauri v2 + Svelte 5 + TypeScript**.
 
-## Recommended IDE Setup
+## Status: Slice 1 — UI with mock data
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+This slice is the **UI, driven entirely by an in-memory mock** so the design can be iterated in the browser with zero backend. There is no `lore` CLI and no Tauri command wiring yet — every data call goes through `src/lib/api.ts`, which currently re-exports a stateful fake (`src/lib/mock.ts`, backed by `localStorage`).
 
-## Need an official Svelte framework?
+The mock implements the exact `LoreApi` TypeScript contract (`src/lib/types.ts`) that the real backend will implement later, so the **wiring slice** is a drop-in swap of `src/lib/api.ts`'s internals (mock → `@tauri-apps/api` `invoke`) with the components untouched.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+What's here: generic sign-in, a repository picker, and a Changes view (file list with add/modify/delete tags + binary hints, commit composer, push/sync, ahead/behind), across signed-out / loading / empty / busy / error states, light + dark.
 
-## Technical considerations
+## Develop
 
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+npm install
+npm run dev      # design loop — opens http://localhost:5173 in the browser (no Tauri build)
+npm test         # vitest — mock/contract tests
+npm run check    # svelte-check + tsc
+npm run build    # production web build
 ```
+
+`npm run dev` is the design-iteration server: edit any `.svelte` file or `src/app.css` and see it live. The design system lives in `src/app.css` (CSS variables for colors/spacing/radius, light + dark).
+
+> Running inside the Tauri shell (`npm run tauri dev`) also works but is unnecessary for design and requires the Rust toolchain.
+
+## Architecture
+
+- `src/lib/types.ts` — the `LoreApi` contract + data types (`StatusResult`, `ChangedFile`, `RepoEntry`, `AppConfig`).
+- `src/lib/mock.ts` — the stateful mock (fake repos + per-repo change sets; commit clears files, push zeroes "ahead", etc.).
+- `src/lib/api.ts` — the app's single data boundary. **Swap this for the real backend later.**
+- `src/lib/session.svelte.ts` — reactive app state (Svelte 5 rune store).
+- `src/lib/*.svelte` — `SignIn`, `TitleBar`, `RepoPicker`, `Changes`, `StatusPill`; wired by `src/App.svelte`.
+
+## Next slice (deferred)
+
+Wire the real `lore` CLI: add `src-tauri` Tauri commands that shell `lore … --json` (NDJSON) and parse it, then replace `src/lib/api.ts` internals with `invoke` calls of the same `LoreApi` signatures. Add `@tauri-apps/plugin-dialog` for the native folder picker, real `lore auth login` (browser + keychain), and map `lore status`'s `action:"keep"` → `"modify"`.
