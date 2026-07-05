@@ -230,6 +230,18 @@ pub fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> R
     Ok(page)
 }
 
+#[tauri::command]
+pub fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), String> {
+    let mut cmd = std::process::Command::new("lore");
+    cmd.arg("login");
+    if let Some(ref a) = auth_url {
+        cmd.arg("--auth-url").arg(a);
+    }
+    cmd.arg(&server_url);
+    let status = cmd.status().map_err(|e| format!("failed to launch lore login: {e}"))?;
+    if status.success() { Ok(()) } else { Err("sign-in failed or was cancelled".to_string()) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
