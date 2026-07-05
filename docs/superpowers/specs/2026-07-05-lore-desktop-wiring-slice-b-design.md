@@ -19,9 +19,11 @@ Three `LoreApi` capabilities change or appear:
 
 `getStatus` (wired in Slice A) doubles as the validity check when opening a folder.
 
+Slice B also introduces an **app-wide error toast**: every failed `LoreApi` call surfaces as a red toast with an error title, replacing the scattered inline error strings. All UI text — headings, buttons, toast titles — is English.
+
 ## Architecture (unchanged from Slice A)
 
-Every host-touching operation is a typed Rust `#[tauri::command]` in `src-tauri` that shells `lore … --json`, parses the NDJSON stream with `serde`, and returns a struct serializing to the exact shape the TypeScript `LoreApi` expects. `src/lib/api.ts` swaps `mock` ↔ `tauriApi` by detecting `__TAURI_INTERNALS__`. Components stay backend-agnostic; only `tauri.ts`, `mock.ts`, the `LoreApi` interface, and the picker component change.
+Every host-touching operation is a typed Rust `#[tauri::command]` in `src-tauri` that shells `lore … --json`, parses the NDJSON stream with `serde`, and returns a struct serializing to the exact shape the TypeScript `LoreApi` expects. `src/lib/api.ts` swaps `mock` ↔ `tauriApi` by detecting `__TAURI_INTERNALS__`. Components stay backend-agnostic. The changed files are `tauri.ts`, `mock.ts`, the `LoreApi` interface, and the picker component, plus two new files for the toast system (`toast.svelte.ts`, `Toaster.svelte`) mounted in `App.svelte`, and the existing call sites (`repo.svelte.ts`, `session.svelte.ts`) rerouted to `toastError`.
 
 The native folder dialog is the one new host capability. It is reached through `@tauri-apps/plugin-dialog` from `tauri.ts` (not a bespoke Rust command) and exposed to components as `LoreApi.pickFolder()`, so the mock/browser path keeps working.
 
@@ -41,7 +43,7 @@ The native folder dialog is the one new host capability. It is reached through `
 
 A Lore working copy is a directory containing a `.lore/` marker (legacy `.urc/` is also accepted). `lore` detects the format and requires the marker on every `--repository` call, erroring `no lore repository at <path> (missing .lore)` when it is absent (`lore/src/storage/open.rs`, `lore/src/call.rs`).
 
-`pickFolder()` returns a directory; the picker then calls `getStatus(path)`. Success ⇒ a valid working copy ⇒ `selectRepo(path)`. Failure ⇒ the error is shown inline in the picker and the current repo is left unchanged. No separate validation command and no instance registration are needed — reading through `--repository <path>` is sufficient, and this is the exact path Slice A's E2E already exercised.
+`pickFolder()` returns a directory; the picker then calls `getStatus(path)`. Success ⇒ a valid working copy ⇒ `selectRepo(path)`. Failure ⇒ an error toast ("Not a Lore repository") and the current repo is left unchanged. No separate validation command and no instance registration are needed — reading through `--repository <path>` is sufficient, and this is the exact path Slice A's E2E already exercised.
 
 ## Cloning
 
@@ -52,7 +54,7 @@ Selecting a repository in the list starts a clone:
 3. The command blocks until the clone finishes, checks success (process exit code and terminal `complete.status`), and returns the created path as a string.
 4. The picker calls `selectRepo(returnedPath)`, landing in the fresh clone.
 
-Clone runs blocking with an indeterminate "Cloning <name>…" state in the picker. A clone whose destination already exists and is non-empty fails inside `lore`; that error surfaces inline. Clone reads from the server and writes only to the local destination — it never mutates server state.
+Clone runs blocking with an indeterminate "Cloning <name>…" state in the picker. A clone whose destination already exists and is non-empty fails inside `lore`; that error surfaces as an error toast. Clone reads from the server and writes only to the local destination — it never mutates server state.
 
 ## Native folder dialog
 
@@ -60,21 +62,31 @@ Clone runs blocking with an indeterminate "Cloning <name>…" state in the picke
 
 ## Component (`RepoPicker.svelte`)
 
-- The server list already renders from `api.listRepos`; it now shows real data. Its loading and error states already exist.
-- The "Open folder" button calls `openFolder()`: `pickFolder()` → on a path, validate with `getStatus` → `selectRepo`, else inline error.
-- Each list row's button becomes a real "Clone…": pick a parent with `pickFolder()` → set a "Cloning…" busy state → `api.cloneRepo(...)` → `selectRepo(finalPath)`; errors inline; busy cleared in `finally`.
-- A single `busy`/`error` pair covers open + clone. The existing escape hatch (the TitleBar "Current repository" button → `clearCurrentRepo`) returns to the picker.
+- The server list already renders from `api.listRepos`; it now shows real data. Its loading state stays inline; failures become an error toast.
+- The "Open folder" button calls `openFolder()`: `pickFolder()` → on a path, validate with `getStatus` → `selectRepo`, else an error toast.
+- Each list row's button becomes a real "Clone…": pick a parent with `pickFolder()` → set a "Cloning…" busy state → `api.cloneRepo(...)` → `selectRepo(finalPath)`; failures raise an error toast; busy cleared in `finally`.
+- A `busy` state covers the open + clone in-flight indicators; errors go to the global toaster. The existing escape hatch (the TitleBar "Current repository" button → `clearCurrentRepo`) returns to the picker.
 
-## Error handling
+## Error handling — app-wide error toasts
 
-`listRepos` / `cloneRepo` failures (auth expired, network, bad URL, non-empty destination) reject from `invoke` and are caught in the picker, shown inline via its existing `error` state. `pickFolder()` returning `null` (cancel) is a no-op. Opening a non-Lore folder surfaces the `getStatus` error inline. No new global error UI is added.
+Slice B adds a small global toast system: a reactive store (`src/lib/toast.svelte.ts`) holding the active toasts, and a `Toaster.svelte` component mounted once at the app root (`App.svelte`) that renders them stacked in a corner. A `toastError(title, err)` helper pushes a **red** toast carrying a short English **title** (the operation that failed) plus the underlying error text as detail. Toasts auto-dismiss after a few seconds and can be dismissed manually.
+
+Every `LoreApi` call that can fail routes its failure through `toastError` with an operation-specific title, so error reporting is uniform across the app:
+
+- `listRepos` → "Couldn't list repositories"
+- open-folder validation (`getStatus`) → "Not a Lore repository"
+- `cloneRepo` → "Clone failed"
+- the Slice A / existing calls (`signIn`, status refresh, `commitAll` / `push` / `sync`) adopt the same helper.
+
+This replaces the scattered inline error strings for these operations. `pickFolder()` returning `null` (the user cancelled) is a no-op, not an error. Loading and busy indicators stay inline (e.g. "Loading repositories…", "Cloning <name>…").
 
 ## Testing
 
 1. **Rust unit test:** `repositories_from` against a captured `repo_list.ndjson` fixture (regenerate with `lore repository list <serverUrl> --json`).
 2. **Rust unit test:** `build_clone_args(serverUrl, id, name, parent) -> (url, path)` pure helper — URL is `serverUrl/id`, path is `parent` joined with `name`. The clone's real network/FS behavior is covered by E2E, not a unit test.
 3. **Frontend:** mock `pickFolder` (canned path) and `cloneRepo` (returns a fake path) keep the picker exercisable in vitest and the browser.
-4. **E2E in `tauri dev`:** sign in → the picker lists the account's real server repos; "Open folder" → pick the local `lore-test-repo` → land in it with real status/history; select a server repo → pick a parent → clone completes → land in the fresh clone.
+4. **Toast store (vitest):** `toastError` adds a toast; manual dismiss removes it; a pushed toast auto-expires (fake timers).
+5. **E2E in `tauri dev`:** sign in → the picker lists the account's real server repos; "Open folder" → pick the local `lore-test-repo` → land in it with real status/history; select a server repo → pick a parent → clone completes → land in the fresh clone; forcing a failure (open a non-Lore folder) shows a red error toast.
 
 ## Open items to resolve during implementation
 
