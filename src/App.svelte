@@ -13,6 +13,7 @@
   import Merge from './lib/Merge.svelte'
   import Locks from './lib/Locks.svelte'
   import StatusBar from './lib/StatusBar.svelte'
+  import Toaster from './lib/Toaster.svelte'
 
   let selectedPath = $state<string | null>(null)
 
@@ -66,6 +67,7 @@
     </div>
     <StatusBar />
   {/if}
+  <Toaster />
 </main>
 
 <style>
