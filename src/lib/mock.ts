@@ -158,9 +158,12 @@ export const mock: LoreApi = {
     await delay(150)
     return lockList.map((l) => ({ ...l }))
   },
-  async getHistory(_repoPath: string) {
+  async getHistory(_repoPath: string, length: number, cursor?: string) {
     await delay(280)
-    return BIG_HISTORY
+    const start = cursor ? BIG_HISTORY.findIndex((c) => c.id === cursor) + 1 : 0
+    const commits = BIG_HISTORY.slice(start, start + length)
+    const nextIndex = start + length
+    return { commits, nextCursor: nextIndex < BIG_HISTORY.length ? commits[commits.length - 1].id : null }
   },
   async getBranches(_repoPath: string) {
     await delay(200)

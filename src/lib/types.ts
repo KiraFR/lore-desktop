@@ -73,6 +73,11 @@ export interface AppConfig {
   recentRepos: string[]
 }
 
+export interface HistoryPage {
+  commits: Commit[]
+  nextCursor: string | null
+}
+
 /** The data boundary the whole app uses. Mock now; Tauri-invoke later. */
 export interface LoreApi {
   isAuthenticated(): Promise<boolean>
@@ -84,7 +89,7 @@ export interface LoreApi {
   push(repoPath: string): Promise<void>
   sync(repoPath: string): Promise<void>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
-  getHistory(repoPath: string): Promise<Commit[]>
+  getHistory(repoPath: string, length: number, cursor?: string): Promise<HistoryPage>
   getBranches(repoPath: string): Promise<Branch[]>
   switchBranch(repoPath: string, name: string): Promise<void>
   createBranch(repoPath: string, name: string, basedOn: string): Promise<void>

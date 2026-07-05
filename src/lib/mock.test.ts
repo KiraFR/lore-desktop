@@ -44,4 +44,12 @@ describe('mock api', () => {
     expect(cfg.serverUrl).toBe('lore://x:1')
     expect(cfg.currentRepo).toBe('C:/r')
   })
+
+  it('getHistory paginates by length + cursor', async () => {
+    const p1 = await mock.getHistory('game-main', 10)
+    expect(p1.commits).toHaveLength(10)
+    expect(p1.nextCursor).not.toBeNull()
+    const p2 = await mock.getHistory('game-main', 10, p1.nextCursor!)
+    expect(p2.commits[0].id).not.toBe(p1.commits[0].id)
+  })
 })
