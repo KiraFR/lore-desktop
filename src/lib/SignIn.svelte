@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from './api'
-  import { session, setSignedIn } from './session.svelte'
+  import { setSignedIn } from './session.svelte'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
@@ -17,11 +17,7 @@
     }
     busy = true
     try {
-      // Already authenticated at the CLI level (valid token) — just record the
-      // server, no need to re-run the browser SSO. Otherwise sign in for real.
-      if (!session.signedIn) {
-        await api.signIn(serverUrl.trim(), showAdvanced && authOverride.trim() ? authOverride.trim() : undefined)
-      }
+      await api.signIn(serverUrl.trim(), showAdvanced && authOverride.trim() ? authOverride.trim() : undefined)
       await setSignedIn(serverUrl.trim())
     } catch (e) { toastError('Sign-in failed', e) } finally { busy = false }
   }
@@ -45,12 +41,10 @@
 
     <button class="accent go" onclick={go} disabled={busy}>
       <Icon name="external" size={16} />
-      {busy
-        ? (session.signedIn ? 'Connecting…' : 'Complete sign-in in your browser…')
-        : (session.signedIn ? 'Continue' : 'Sign in')}
+      {busy ? 'Complete sign-in in your browser…' : 'Sign in'}
     </button>
     {#if error}<p class="error">{error}</p>{/if}
-    {#if !session.signedIn}<p class="dim hint">Signs in through your server's SSO · opens your browser</p>{/if}
+    <p class="dim hint">Signs in through your server's SSO · opens your browser</p>
   </div>
 </div>
 
