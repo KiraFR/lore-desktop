@@ -1,0 +1,2 @@
+{"tagName":"authIdentity","data":{"authUrl":"https://lore.example.com:8081","resource":"","userId":"11111111-2222-4333-8444-555555555555","authorizedDomains":"lore-sso, example.com, lore.example.com","expires":1783313776000,"token":""}}
+{"tagName":"complete","data":{"status":0}}

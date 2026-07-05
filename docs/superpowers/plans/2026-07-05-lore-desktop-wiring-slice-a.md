@@ -99,6 +99,8 @@ git commit -m "feat(wiring): add @tauri-apps/api + ping command scaffold"
 
 ## Task 2: Capture real `--json` fixtures (⚠️ user-assisted: needs login)
 
+> **Status: DONE** — fixtures captured + committed from a fresh `desktoptest1` repo (2 commits). Encodings pinned in `src-tauri/tests/fixtures/README.md`; Tasks 4–6 already encode them. The steps below are the regeneration procedure only.
+
 **Why:** The exact `action` encoding (`repositoryStatusFile.action`) and the `metadata` event key/value encoding are only knowable from real output. These fixtures are the test oracle for the parsers.
 
 **Files:**
@@ -505,16 +507,49 @@ fn zero_hash(h: &str) -> bool {
     h.is_empty() || h.chars().all(|c| c == '0')
 }
 
-/// Walk the event stream in order. Each `revisionHistoryEntry` starts a commit;
-/// the `metadata` events that follow (until the next entry) fill message/author/
-/// date. `head` is the branch name from the initial `revisionHistory` header,
-/// attached to the first commit only.
+/// A `metadata` value is `{"tagName":"string|numeric|context","data":<v>}`.
+fn metadata_value_string(value: &serde_json::Value) -> String {
+    match value.get("data") {
+        Some(v) if v.is_string() => v.as_str().unwrap().to_string(),
+        Some(v) => v.to_string(),
+        None => String::new(),
+    }
+}
+fn metadata_value_u64(value: &serde_json::Value) -> u64 {
+    value.get("data").and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+/// Format an epoch-ms timestamp as a short relative string (e.g. "2 min ago").
+fn relative_time(ms: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(ms);
+    let secs = now.saturating_sub(ms) / 1000;
+    if secs < 60 { "just now".to_string() }
+    else if secs < 3600 { format!("{} min ago", secs / 60) }
+    else if secs < 86_400 { format!("{} hours ago", secs / 3600) }
+    else { format!("{} days ago", secs / 86_400) }
+}
+
+/// Walk the stream: each `revisionHistoryEntry` starts a commit; the following
+/// `metadata` events (until the next entry) fill message / author-id / timestamp.
+/// Author ids (`created-by`) are resolved to display names via the trailing
+/// `authUserInfo` events. `head` is left `None` in Slice A (history exposes a
+/// branch id, not a name — real head labels are a follow-up).
 fn history_from(events: &[LoreEvent]) -> HistoryPage {
-    let head_branch = events_with_tag(events, "revisionHistory")
-        .into_iter().next()
-        .and_then(|d| d.get("branch")).and_then(|v| v.as_str()).map(String::from);
+    let mut users: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for d in events_with_tag(events, "authUserInfo") {
+        if let (Some(id), Some(name)) =
+            (d.get("id").and_then(|v| v.as_str()), d.get("name").and_then(|v| v.as_str()))
+        {
+            users.insert(id.to_string(), name.to_string());
+        }
+    }
 
     let mut commits: Vec<CommitDto> = Vec::new();
+    let mut author_ids: Vec<String> = Vec::new();
+    let mut when_ms: Vec<u64> = Vec::new();
     for ev in events {
         match ev.tag_name.as_str() {
             "revisionHistoryEntry" => {
@@ -526,40 +561,36 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
                         .filter(|p| !zero_hash(p)).map(String::from).collect())
                     .unwrap_or_default();
                 commits.push(CommitDto {
-                    head: if commits.is_empty() { head_branch.clone() } else { None },
-                    id, rev, parents,
+                    id, rev, parents, head: None,
                     message: String::new(), author: String::new(), when: String::new(),
                     adds: 0, mods: 0, dels: 0, lane: 0, files: Vec::new(),
                 });
+                author_ids.push(String::new());
+                when_ms.push(0);
             }
             "metadata" => {
-                if let Some(c) = commits.last_mut() {
+                if let Some(i) = commits.len().checked_sub(1) {
                     let key = ev.data.get("key").and_then(|v| v.as_str()).unwrap_or("");
-                    let val = ev.data.get("value").map(json_scalar_string).unwrap_or_default();
-                    match key {
-                        "message" => c.message = val,
-                        "creator" | "committer" => { if c.author.is_empty() { c.author = val } }
-                        "date" => c.when = val,
-                        _ => {}
+                    if let Some(value) = ev.data.get("value") {
+                        match key {
+                            "message" => commits[i].message = metadata_value_string(value),
+                            "created-by" => author_ids[i] = metadata_value_string(value),
+                            "timestamp" => when_ms[i] = metadata_value_u64(value),
+                            _ => {}
+                        }
                     }
                 }
             }
             _ => {}
         }
     }
+    for (i, c) in commits.iter_mut().enumerate() {
+        c.author = users.get(&author_ids[i]).cloned().unwrap_or_else(|| author_ids[i].clone());
+        c.when = relative_time(when_ms[i]);
+    }
+
     let next_cursor = commits.last().map(|c| c.id.clone());
     HistoryPage { commits, next_cursor }
-}
-
-/// Extract a scalar string from a `metadata` value, which may be a bare string,
-/// a number, or a tagged `{ "string": "..." }` / `{ "numeric": n }` object.
-fn json_scalar_string(v: &serde_json::Value) -> String {
-    if let Some(s) = v.as_str() { return s.to_string(); }
-    if let Some(n) = v.as_i64() { return n.to_string(); }
-    if let Some(obj) = v.as_object() {
-        if let Some(inner) = obj.values().next() { return json_scalar_string(inner); }
-    }
-    String::new()
 }
 
 #[cfg(test)]
@@ -571,8 +602,12 @@ mod history_tests {
     fn parses_history_fixture() {
         let events = parse_events(include_str!("../tests/fixtures/history.ndjson")).unwrap();
         let page = history_from(&events);
-        assert!(!page.commits.is_empty());
-        assert!(page.commits.iter().all(|c| !c.id.is_empty()));
+        assert_eq!(page.commits.len(), 2);
+        assert_eq!(page.commits[0].rev, 2);
+        assert_eq!(page.commits[0].message, "Add lib.rs and update main");
+        assert_eq!(page.commits[0].author, "jimmy@example.com");
+        assert_eq!(page.commits[0].parents.len(), 1); // rev 2 → one real parent (rev 1)
+        assert!(page.commits[1].parents.is_empty());   // rev 1 is the root
         assert!(page.next_cursor.is_some());
     }
 }
@@ -581,7 +616,7 @@ mod history_tests {
 - [ ] **Step 2: Run test to verify it passes**
 
 Run: `cargo test --manifest-path C:/Users/jimmy/Documents/SoonerOrLater/lore-desktop/src-tauri/Cargo.toml history_tests`
-Expected: PASS. If `message`/`author`/`when` come back empty, correct the `key` match arms to the strings recorded in Task 2's README and re-run.
+Expected: PASS (2 commits; message + resolved author + parent counts match the captured fixture).
 
 - [ ] **Step 3: Add the command**
 
