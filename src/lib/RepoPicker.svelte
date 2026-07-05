@@ -1,19 +1,53 @@
 <script lang="ts">
   import { api } from './api'
   import { session, selectRepo } from './session.svelte'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
   let repos = $state<RepoEntry[]>([])
   let loading = $state(false)
-  let error = $state('')
+  // '' | 'open' | `clone:<name>` — drives the in-flight button labels.
+  let busy = $state('')
 
   async function loadRepos() {
-    error = ''; loading = true
-    try { repos = await api.listRepos(session.config.serverUrl!) }
-    catch (e) { error = String(e) } finally { loading = false }
+    loading = true
+    try {
+      repos = await api.listRepos(session.config.serverUrl!)
+    } catch (e) {
+      toastError("Couldn't list repositories", e)
+    } finally {
+      loading = false
+    }
   }
-  function fakeBrowse() { selectRepo('C:/SoonerOrLater/game-main') }
+
+  async function openFolder() {
+    const path = await api.pickFolder()
+    if (!path) return // cancelled
+    busy = 'open'
+    try {
+      await api.getStatus(path) // validates it is a Lore working copy
+      await selectRepo(path)
+    } catch (e) {
+      toastError('Not a Lore repository', e)
+    } finally {
+      busy = ''
+    }
+  }
+
+  async function cloneRepo(entry: RepoEntry) {
+    const parent = await api.pickFolder()
+    if (!parent) return // cancelled
+    busy = `clone:${entry.name}`
+    try {
+      const path = await api.cloneRepo(session.config.serverUrl!, entry.id, entry.name, parent)
+      await selectRepo(path)
+    } catch (e) {
+      toastError('Clone failed', e)
+    } finally {
+      busy = ''
+    }
+  }
 
   $effect(() => { loadRepos() })
 </script>
@@ -25,19 +59,22 @@
   <div class="card">
     <div><strong>Local working copy</strong><p class="muted small">Choose a folder you've already cloned.</p></div>
     <span class="spacer"></span>
-    <button class="accent" onclick={fakeBrowse}>Open folder…</button>
+    <button class="accent" onclick={openFolder} disabled={busy === 'open'}>
+      {busy === 'open' ? 'Opening…' : 'Open folder…'}
+    </button>
   </div>
 
   <h3>On {session.config.serverUrl}</h3>
   {#if loading}<p class="muted">Loading repositories…</p>{/if}
-  {#if error}<p class="error">{error}</p>{/if}
   <ul class="repos">
     {#each repos as r (r.id)}
       <li>
         <span class="ico"><Icon name="folder" size={16} /></span>
         <div class="meta"><strong>{r.name}</strong><p class="muted small mono">{r.id.slice(0, 12)}…</p></div>
         <span class="spacer"></span>
-        <button onclick={() => selectRepo(`C:/SoonerOrLater/${r.name}`)}>Clone…</button>
+        <button onclick={() => cloneRepo(r)} disabled={busy === `clone:${r.name}`}>
+          {busy === `clone:${r.name}` ? 'Cloning…' : 'Clone…'}
+        </button>
       </li>
     {/each}
   </ul>
