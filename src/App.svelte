@@ -40,7 +40,7 @@
 <main class="shell">
   {#if !session.ready}
     <div class="fill muted">Loading…</div>
-  {:else if !session.signedIn}
+  {:else if !session.signedIn || !session.config.serverUrl}
     <SignIn />
   {:else}
     <TitleBar />
