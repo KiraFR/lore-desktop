@@ -99,6 +99,30 @@ pub fn lore_status(repo_path: String) -> Result<StatusResultDto, String> {
 
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoEntryDto {
+    pub id: String,
+    pub name: String,
+}
+
+/// Map `repositoryListEntry` events (`{ id, name }`) onto the UI's `RepoEntry`.
+fn repositories_from(events: &[LoreEvent]) -> Vec<RepoEntryDto> {
+    events_with_tag(events, "repositoryListEntry")
+        .into_iter()
+        .map(|d| RepoEntryDto {
+            id: d.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: d.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn lore_repositories(server_url: String) -> Result<Vec<RepoEntryDto>, String> {
+    let events = run_lore(&["repository", "list", &server_url])?;
+    Ok(repositories_from(&events))
+}
+
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CommitDto {
     pub id: String,
     pub rev: u64,
@@ -286,5 +310,20 @@ mod history_tests {
         assert_eq!(page.commits[0].parents.len(), 1); // rev 2 → one real parent (rev 1)
         assert!(page.commits[1].parents.is_empty());   // rev 1 is the root
         assert!(page.next_cursor.is_some());
+    }
+}
+
+#[cfg(test)]
+mod repositories_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    #[test]
+    fn parses_repo_list_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/repo_list.ndjson")).unwrap();
+        let repos = repositories_from(&events);
+        assert_eq!(repos.len(), 3);
+        assert_eq!(repos[0].id, "019f333af5e073d28bb117ad1596784a");
+        assert_eq!(repos[0].name, "desktoptest1");
     }
 }
