@@ -14,7 +14,13 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![commands::ping])
+    .invoke_handler(tauri::generate_handler![
+        commands::ping,
+        commands::lore_is_authenticated,
+        commands::lore_sign_in,
+        commands::lore_status,
+        commands::lore_history,
+    ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
