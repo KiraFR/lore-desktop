@@ -1,5 +1,6 @@
 import { api } from './api'
 import { session } from './session.svelte'
+import { toastError } from './toast'
 import type { LockEntry, StatusResult } from './types'
 
 // The current repository's status + in-flight action, shared by the title bar
@@ -7,7 +8,6 @@ import type { LockEntry, StatusResult } from './types'
 export const repo = $state({
   status: null as StatusResult | null,
   busy: '' as '' | 'status' | 'commit' | 'push' | 'sync',
-  error: '',
 })
 
 export const locks = $state({ list: [] as LockEntry[] })
@@ -15,24 +15,29 @@ export const locks = $state({ list: [] as LockEntry[] })
 export async function refreshLocks() {
   const path = session.config.currentRepo
   if (!path) { locks.list = []; return }
-  locks.list = await api.getLocks(path)
+  try { locks.list = await api.getLocks(path) }
+  catch (e) { toastError("Couldn't load locks", e) }
 }
 
 export async function refreshStatus() {
   const path = session.config.currentRepo
   if (!path) { repo.status = null; return }
-  repo.error = ''; repo.busy = 'status'
+  repo.busy = 'status'
   try { repo.status = await api.getStatus(path) }
-  catch (e) { repo.error = String(e) }
+  catch (e) { toastError("Couldn't load changes", e) }
   finally { repo.busy = '' }
 }
 
 async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Promise<void>) {
   const path = session.config.currentRepo
   if (!path) return
-  repo.error = ''; repo.busy = kind
+  repo.busy = kind
   try { await run(path) }
-  catch (e) { repo.error = String(e); repo.busy = ''; return }
+  catch (e) {
+    toastError(`${kind[0].toUpperCase()}${kind.slice(1)} failed`, e)
+    repo.busy = ''
+    return
+  }
   await refreshStatus()
 }
 
@@ -43,9 +48,8 @@ export const sync = () => act('sync', (p) => api.sync(p))
 export async function setLock(path: string, lock: boolean) {
   const p = session.config.currentRepo
   if (!p) return
-  repo.error = ''
   try { await api.setLock(p, path, lock) }
-  catch (e) { repo.error = String(e); return }
+  catch (e) { toastError(lock ? 'Lock failed' : 'Unlock failed', e); return }
   await refreshStatus()
   await refreshLocks()
 }

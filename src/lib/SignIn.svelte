@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from './api'
   import { setSignedIn } from './session.svelte'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
   let serverUrl = $state('lore://lore.example.com:41337')
@@ -18,7 +19,7 @@
     try {
       await api.signIn(serverUrl.trim(), showAdvanced && authOverride.trim() ? authOverride.trim() : undefined)
       await setSignedIn(serverUrl.trim())
-    } catch (e) { error = String(e) } finally { busy = false }
+    } catch (e) { toastError('Sign-in failed', e) } finally { busy = false }
   }
 </script>
 

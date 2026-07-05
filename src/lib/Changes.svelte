@@ -35,8 +35,6 @@
 <section class="changes">
   <div class="colhead">Changes <span class="n">{files.length} {files.length === 1 ? 'file' : 'files'}</span></div>
 
-  {#if repo.error}<p class="error pad">{repo.error}</p>{/if}
-
   <div class="filelist">
     {#if repo.busy === 'status' && !repo.status}
       <p class="muted pad">Scanning…</p>

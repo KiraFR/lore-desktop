@@ -1,4 +1,5 @@
 import { api } from './api'
+import { toastError } from './toast'
 import type { AppConfig } from './types'
 
 // Shared reactive app state. `.svelte.ts` lets us use runes in a module.
@@ -9,9 +10,14 @@ export const session = $state({
 })
 
 export async function bootstrap() {
-  session.config = await api.loadConfig()
-  session.signedIn = await api.isAuthenticated()
-  session.ready = true
+  try {
+    session.config = await api.loadConfig()
+    session.signedIn = await api.isAuthenticated()
+  } catch (e) {
+    toastError('Startup failed', e)
+  } finally {
+    session.ready = true
+  }
 }
 
 export async function setSignedIn(serverUrl: string) {
