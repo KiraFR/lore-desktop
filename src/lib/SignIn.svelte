@@ -1,10 +1,10 @@
 <script lang="ts">
   import { api } from './api'
-  import { setSignedIn } from './session.svelte'
+  import { DEFAULT_SERVER_URL, setSignedIn } from './session.svelte'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
-  let serverUrl = $state('lore://lore.example.com:41337')
+  let serverUrl = $state(DEFAULT_SERVER_URL)
   let authOverride = $state('')
   let showAdvanced = $state(false)
   let busy = $state(false)

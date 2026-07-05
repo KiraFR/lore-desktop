@@ -2,6 +2,9 @@ import { api } from './api'
 import { toastError } from './toast'
 import type { AppConfig } from './types'
 
+/** The studio's Lore server; used as the default when no server is stored yet. */
+export const DEFAULT_SERVER_URL = 'lore://lore.example.com:41337'
+
 // Shared reactive app state. `.svelte.ts` lets us use runes in a module.
 export const session = $state({
   ready: false,
@@ -11,7 +14,10 @@ export const session = $state({
 
 export async function bootstrap() {
   try {
-    session.config = await api.loadConfig()
+    const config = await api.loadConfig()
+    // A signed-in user shouldn't have to re-pick a server; default it when the
+    // stored config has none so we go straight to the repo picker.
+    session.config = config.serverUrl ? config : { ...config, serverUrl: DEFAULT_SERVER_URL }
     session.signedIn = await api.isAuthenticated()
   } catch (e) {
     toastError('Startup failed', e)
