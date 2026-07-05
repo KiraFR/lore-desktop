@@ -254,6 +254,33 @@ pub fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> R
     Ok(page)
 }
 
+/// Build the `(clone URL, destination path)` pair for a clone.
+/// The URL addresses the repository by id: `<server_url>/<repo_id>`.
+/// The path is `<dest_parent>/<repo_name>`, joined with the platform separator.
+fn build_clone_args(server_url: &str, repo_id: &str, repo_name: &str, dest_parent: &str) -> (String, String) {
+    let url = format!("{}/{}", server_url.trim_end_matches('/'), repo_id);
+    let path = std::path::Path::new(dest_parent)
+        .join(repo_name)
+        .to_string_lossy()
+        .into_owned();
+    (url, path)
+}
+
+/// Clone `<server_url>/<repo_id>` into `<dest_parent>/<repo_name>` and return the
+/// created path. `run_lore` blocks until the clone finishes and errors on a
+/// non-zero terminal `complete.status` — the picker shows that as a toast.
+#[tauri::command]
+pub fn lore_clone(
+    server_url: String,
+    repo_id: String,
+    repo_name: String,
+    dest_parent: String,
+) -> Result<String, String> {
+    let (url, path) = build_clone_args(&server_url, &repo_id, &repo_name, &dest_parent);
+    run_lore(&["clone", &url, &path])?;
+    Ok(path)
+}
+
 #[tauri::command]
 pub fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), String> {
     let mut cmd = std::process::Command::new("lore");
@@ -325,5 +352,25 @@ mod repositories_tests {
         assert_eq!(repos.len(), 3);
         assert_eq!(repos[0].id, "019f333af5e073d28bb117ad1596784a");
         assert_eq!(repos[0].name, "desktoptest1");
+    }
+}
+
+#[cfg(test)]
+mod clone_tests {
+    use super::*;
+
+    #[test]
+    fn builds_clone_url_and_path() {
+        let (url, path) = build_clone_args("lore://host:41337", "019abc", "desktoptest1", "C:/repos");
+        assert_eq!(url, "lore://host:41337/019abc");
+        // Path join uses the platform separator; assert both parts are present.
+        assert!(path.ends_with("desktoptest1"), "path was {path}");
+        assert!(path.contains("repos"), "path was {path}");
+    }
+
+    #[test]
+    fn trims_trailing_slash_on_server_url() {
+        let (url, _) = build_clone_args("lore://host:41337/", "id1", "n", "/tmp");
+        assert_eq!(url, "lore://host:41337/id1");
     }
 }
