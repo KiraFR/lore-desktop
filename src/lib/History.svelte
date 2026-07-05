@@ -13,16 +13,33 @@
 
   const selected = $derived(commits.find((c) => c.id === selectedId) ?? null)
 
+  const PAGE = 200
+  let nextCursor = $state<string | null | undefined>(undefined) // undefined = not loaded, null = end
+  let loadingMore = $state(false)
+
   $effect(() => {
     const repoPath = session.config.currentRepo
     if (!repoPath) return
     loading = true
-    api.getHistory(repoPath).then((list) => {
-      commits = list
-      if (list.length && (selectedId === null || !list.some((c) => c.id === selectedId))) selectedId = list[0].id
+    commits = []
+    api.getHistory(repoPath, PAGE).then((page) => {
+      commits = page.commits
+      nextCursor = page.nextCursor
+      if (page.commits.length && (selectedId === null || !page.commits.some((c) => c.id === selectedId)))
+        selectedId = page.commits[0].id
       loading = false
     })
   })
+
+  async function loadMore() {
+    const repoPath = session.config.currentRepo
+    if (!repoPath || loadingMore || !nextCursor) return
+    loadingMore = true
+    const page = await api.getHistory(repoPath, PAGE, nextCursor)
+    commits = [...commits, ...page.commits]
+    nextCursor = page.nextCursor
+    loadingMore = false
+  }
 
   // Track the scroll viewport height so the window covers exactly what's visible.
   $effect(() => {
@@ -87,7 +104,11 @@
   }
   const who = (name: string) => (name === 'you' ? 'you' : name)
 
-  function onScroll() { if (glistEl) scrollTop = glistEl.scrollTop }
+  function onScroll() {
+    if (!glistEl) return
+    scrollTop = glistEl.scrollTop
+    if (glistEl.scrollTop + glistEl.clientHeight > commits.length * ROW_H - viewH * 2) loadMore()
+  }
 </script>
 
 <section class="history">
