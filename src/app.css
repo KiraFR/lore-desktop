@@ -12,6 +12,7 @@
   --accent-hover: #3a72e0;
   --accent-soft: #14304d;
   --accent-ring: rgba(48, 103, 212, 0.35);
+  --accent-text: #9dc0ff;
   --on-accent: #ffffff;
   --added: #3fb950;
   --modified: #d29922;
@@ -50,3 +51,11 @@ a { color: var(--accent); text-decoration: none; }
 .dim { color: var(--text-dim); }
 .error { color: var(--deleted); }
 .spacer { flex: 1; }
+
+/* Thin, theme-matched scrollbars (Chromium + Firefox). */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }

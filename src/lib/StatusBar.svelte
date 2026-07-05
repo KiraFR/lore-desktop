@@ -1,7 +1,10 @@
 <script lang="ts">
   import { session } from './session.svelte'
-  import { repo } from './repo.svelte'
+  import { repo, locks } from './repo.svelte'
   import Icon from './Icon.svelte'
+
+  const mine = $derived(locks.list.filter((l) => l.holder === 'you').length)
+  const others = $derived(locks.list.filter((l) => l.holder !== 'you').length)
 </script>
 
 <footer class="statusbar">
@@ -16,7 +19,14 @@
   </span>
   <span class="spacer"></span>
   {#if session.config.currentRepo}
-    <span class="item"><Icon name="lock" size={13} /> No locks held</span>
+    <span class="item">
+      <Icon name="lock" size={13} />
+      {#if mine || others}
+        {mine} held by you{#if others} · {others} by teammates{/if}
+      {:else}
+        No locks held
+      {/if}
+    </span>
   {/if}
 </footer>
 

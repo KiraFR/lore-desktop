@@ -1,4 +1,4 @@
-import type { AppConfig, ChangedFile, LoreApi, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, LockEntry, LoreApi, MergePreview, RepoEntry, StatusResult } from './types'
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
@@ -10,17 +10,96 @@ const FAKE_REPOS: RepoEntry[] = [
   { id: '019f2e1699887744aa11bb22cc33dd44', name: 'audio' },
 ]
 
+// A large synthetic history to prove the History graph virtualizes/scrolls smoothly.
+// Topology = a continuous `main` lane with short local feature branches that fork and
+// merge back within a few rows, so every graph edge stays local (windowing-friendly).
+function buildBigHistory(n: number): Commit[] {
+  const authors: [string, string][] = [['you', 'JD'], ['Maya R', 'MR'], ['Alex L', 'AL'], ['Sam K', 'SK'], ['Ivy N', 'IN']]
+  const verbs = ['Fix', 'Add', 'Refactor', 'Tune', 'Bake', 'Rebalance', 'Update', 'Remove', 'Optimize', 'Wire', 'Polish', 'Cache']
+  const nouns = ['player movement', 'loot tables', 'arena lighting', 'hero mesh', 'inventory UI', 'net replication', 'audio mix', 'AI navigation', 'material LODs', 'input mapping', 'save system', 'weapon recoil']
+  const dirs = ['Source/Player/', 'Source/Items/', 'Content/Maps/', 'Content/Characters/', 'Content/UI/', 'Config/', 'Content/Environment/']
+  const exts = ['.cpp', '.h', '.uasset', '.umap', '.ini']
+  const acts: CommitFile['action'][] = ['modify', 'add', 'delete']
+  const id = (i: number) => 'c' + (0x100000 + i).toString(16)
+  const whenFor = (i: number) =>
+    i === 0 ? '2 min ago'
+      : i < 5 ? `${i * 12} min ago`
+        : i < 30 ? `${Math.ceil(i / 5)} hours ago`
+          : i < 120 ? `${Math.ceil(i / 30)} days ago`
+            : `${Math.ceil(i / 120)} weeks ago`
+  const fileFor = (i: number, k: number): CommitFile => ({
+    path: dirs[(i * 3 + k) % dirs.length] + verbs[(i + k) % verbs.length] + '_' + ((i * 7 + k) % 40) + exts[(i * 5 + k) % exts.length],
+    action: acts[(i + k) % acts.length],
+  })
+  const mk = (i: number, lane: number, parents: string[], message: string, head?: string): Commit => {
+    const a = authors[(i * 7) % authors.length]
+    const nf = 1 + ((i * 3) % 3)
+    return {
+      id: id(i), rev: n - i, lane, parents, head, message, author: a[0], when: whenFor(i),
+      adds: (i * 13) % 7, mods: 1 + (i * 5) % 5, dels: i % 9 === 0 ? 1 : 0,
+      files: Array.from({ length: nf }, (_, k) => fileFor(i, k)),
+    }
+  }
+  const out: Commit[] = []
+  let labeled = false
+  let sinceFeature = 6
+  let i = 0
+  while (i < n) {
+    if (sinceFeature >= 8 && i + 3 < n) {
+      out.push(mk(i, 0, [id(i + 3), id(i + 1)], 'Merge feature branch into main', i === 0 ? 'main' : undefined))
+      const tip = !labeled ? 'feature/loot' : undefined
+      labeled = true
+      out.push(mk(i + 1, 1, [id(i + 2)], `${verbs[(i + 1) % verbs.length]} ${nouns[(i + 1) % nouns.length]}`, tip))
+      out.push(mk(i + 2, 1, [id(i + 3)], `${verbs[(i + 2) % verbs.length]} ${nouns[(i + 2) % nouns.length]}`))
+      i += 3
+      sinceFeature = 0
+    } else {
+      out.push(mk(i, 0, i + 1 < n ? [id(i + 1)] : [], `${verbs[i % verbs.length]} ${nouns[(i * 2) % nouns.length]}`, i === 0 ? 'main' : undefined))
+      i += 1
+      sinceFeature += 1
+    }
+  }
+  return out
+}
+
+const BIG_HISTORY: Commit[] = buildBigHistory(5000)
+
 // Per-repo mutable change set, keyed by working-dir path. Defaults for any path.
 function seedFiles(): ChangedFile[] {
   return [
-    { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241 },
-    { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204 },
+    { path: 'Content/Maps/Level_01.umap', action: 'modify', isBinary: true, size: 2359296, oldSize: 2100480, lockedBy: 'you' },
     { path: 'Content/Characters/Hero/SK_Hero.uasset', action: 'add', isBinary: true, size: 4718592 },
-    { path: 'Content/Maps/Level_01.umap', action: 'modify', isBinary: true, size: 2359296 },
-    { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512 },
-    { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0 },
+    { path: 'Content/Environment/T_Cliff_D.uasset', action: 'modify', isBinary: true, size: 4404019, oldSize: 4093640, lockedBy: 'Maya R' },
+    { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241, oldSize: 7980 },
+    { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204, oldSize: 1180 },
+    { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512, oldSize: 500 },
+    { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0, oldSize: 3400 },
   ]
 }
+
+function buildBranches(extra: number): Branch[] {
+  const base: Branch[] = [
+    { name: 'main', current: true, rev: 146 },
+    { name: 'feature/loot', current: false, rev: 151 },
+    { name: 'fix/lighting-bake', current: false, rev: 149 },
+    { name: 'experimental/ai-nav', current: false, rev: 140 },
+  ]
+  const prefixes = ['feature', 'fix', 'chore', 'release', 'hotfix', 'exp', 'wip', 'user']
+  const topics = ['loot', 'lighting', 'nav', 'inventory', 'audio', 'netcode', 'mesh', 'ui', 'save', 'recoil', 'input', 'materials', 'ai', 'physics', 'vfx', 'hud', 'quest', 'crafting']
+  const gen: Branch[] = []
+  for (let i = 0; i < extra; i++) {
+    gen.push({ name: `${prefixes[i % prefixes.length]}/${topics[(i * 5) % topics.length]}-${i + 1}`, current: false, rev: 90 + (i % 70) })
+  }
+  return [...base, ...gen]
+}
+
+let branchList: Branch[] = buildBranches(2000)
+
+let lockList: LockEntry[] = [
+  { path: 'Content/Maps/Level_01.umap', holder: 'you', when: '12 min ago' },
+  { path: 'Content/Environment/T_Cliff_D.uasset', holder: 'Maya R', when: '2 hours ago' },
+  { path: 'Content/Characters/Hero/SK_Hero.uasset', holder: 'Alex L', when: 'yesterday' },
+]
 
 interface RepoState { branch: string; localAhead: number; remoteAhead: number; files: ChangedFile[] }
 const repoStates = new Map<string, RepoState>()
@@ -67,6 +146,50 @@ export const mock: LoreApi = {
   async sync(repoPath: string) {
     await delay(500)
     stateFor(repoPath).remoteAhead = 0
+  },
+  async setLock(repoPath: string, path: string, lock: boolean) {
+    await delay(200)
+    const f = stateFor(repoPath).files.find((x) => x.path === path)
+    if (f) f.lockedBy = lock ? 'you' : null
+    lockList = lockList.filter((l) => l.path !== path)
+    if (lock) lockList = [{ path, holder: 'you', when: 'just now' }, ...lockList]
+  },
+  async getLocks(_repoPath: string) {
+    await delay(150)
+    return lockList.map((l) => ({ ...l }))
+  },
+  async getHistory(_repoPath: string) {
+    await delay(280)
+    return BIG_HISTORY
+  },
+  async getBranches(_repoPath: string) {
+    await delay(200)
+    return branchList.map((b) => ({ ...b }))
+  },
+  async switchBranch(repoPath: string, name: string) {
+    await delay(300)
+    branchList = branchList.map((b) => ({ ...b, current: b.name === name }))
+    stateFor(repoPath).branch = name
+  },
+  async createBranch(repoPath: string, name: string, _basedOn: string) {
+    await delay(400)
+    branchList = branchList.map((b) => ({ ...b, current: false }))
+    branchList = [...branchList, { name, current: true, rev: 146 }]
+    stateFor(repoPath).branch = name
+  },
+  async previewMerge(_repoPath: string, source: string, target: string): Promise<MergePreview> {
+    await delay(300)
+    if (source === target) return { commits: 0, files: 0, conflicts: [] }
+    if (source === 'feature/loot') {
+      return {
+        commits: 8, files: 23,
+        conflicts: [
+          { path: 'Content/Environment/T_Cliff_D.uasset', isBinary: true, mine: { author: 'you', rev: 146 }, theirs: { author: 'Maya R', rev: 151 } },
+          { path: 'Content/Maps/Arena.umap', isBinary: true, mine: { author: 'you', rev: 146 }, theirs: { author: 'Alex L', rev: 150 } },
+        ],
+      }
+    }
+    return { commits: 3, files: 5, conflicts: [] }
   },
   async loadConfig() {
     await delay(60)
