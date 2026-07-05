@@ -7,7 +7,7 @@
 
   let repos = $state<RepoEntry[]>([])
   let loading = $state(false)
-  // '' | 'open' | `clone:<name>` — drives the in-flight button labels.
+  // '' | 'open' | `clone:<id>` — drives the in-flight button labels.
   let busy = $state('')
 
   async function loadRepos() {
@@ -38,7 +38,7 @@
   async function cloneRepo(entry: RepoEntry) {
     const parent = await api.pickFolder()
     if (!parent) return // cancelled
-    busy = `clone:${entry.name}`
+    busy = `clone:${entry.id}`
     try {
       const path = await api.cloneRepo(session.config.serverUrl!, entry.id, entry.name, parent)
       await selectRepo(path)
@@ -72,8 +72,8 @@
         <span class="ico"><Icon name="folder" size={16} /></span>
         <div class="meta"><strong>{r.name}</strong><p class="muted small mono">{r.id.slice(0, 12)}…</p></div>
         <span class="spacer"></span>
-        <button onclick={() => cloneRepo(r)} disabled={busy === `clone:${r.name}`}>
-          {busy === `clone:${r.name}` ? 'Cloning…' : 'Clone…'}
+        <button onclick={() => cloneRepo(r)} disabled={busy === `clone:${r.id}`}>
+          {busy === `clone:${r.id}` ? 'Cloning…' : 'Clone…'}
         </button>
       </li>
     {/each}
