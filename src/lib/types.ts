@@ -84,6 +84,10 @@ export interface LoreApi {
   signIn(serverUrl: string, authUrlOverride?: string): Promise<void>
   signOut(): Promise<void>
   listRepos(serverUrl: string): Promise<RepoEntry[]>
+  /** Native OS directory chooser; returns the absolute path or null if cancelled. */
+  pickFolder(): Promise<string | null>
+  /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
+  cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
   commitAll(repoPath: string, message: string): Promise<void>
   push(repoPath: string): Promise<void>

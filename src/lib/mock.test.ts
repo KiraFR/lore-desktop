@@ -52,4 +52,11 @@ describe('mock api', () => {
     const p2 = await mock.getHistory('game-main', 10, p1.nextCursor!)
     expect(p2.commits[0].id).not.toBe(p1.commits[0].id)
   })
+
+  it('pickFolder returns a path; cloneRepo returns dest/name', async () => {
+    const picked = await mock.pickFolder()
+    expect(typeof picked).toBe('string')
+    const cloned = await mock.cloneRepo('lore://demo:41337', 'id1', 'game-main', 'C:/repos')
+    expect(cloned).toBe('C:/repos/game-main')
+  })
 })

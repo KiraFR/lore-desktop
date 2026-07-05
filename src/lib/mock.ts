@@ -127,6 +127,14 @@ export const mock: LoreApi = {
     await delay()
     return FAKE_REPOS
   },
+  async pickFolder() {
+    await delay(120)
+    return 'C:/SoonerOrLater/picked-repo'
+  },
+  async cloneRepo(_serverUrl: string, _repoId: string, repoName: string, destParent: string) {
+    await delay(600) // simulate the network + disk work
+    return `${destParent}/${repoName}`
+  },
   async getStatus(repoPath: string) {
     await delay(250)
     const s = stateFor(repoPath)
