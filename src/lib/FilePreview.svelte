@@ -14,9 +14,9 @@
   // Fetch the unified diff whenever a text file is selected.
   $effect(() => {
     const f = file
-    if (!f || f.isBinary) { diff = []; diffError = false; return }
+    if (!f || f.isBinary) { diff = []; diffError = false; diffLoading = false; return }
     const repoPath = session.config.currentRepo
-    if (!repoPath) { diff = []; return }
+    if (!repoPath) { diff = []; diffLoading = false; return }
     diffLoading = true
     diffError = false
     api
