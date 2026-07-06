@@ -10,19 +10,23 @@
   let diff = $state<DiffLine[]>([])
   let diffLoading = $state(false)
   let diffError = $state(false)
+  let lastDiffPath = ''
 
-  // Fetch the unified diff whenever a text file is selected.
+  // Fetch the unified diff whenever a text file is selected. A same-file refetch
+  // (e.g. the window-focus refresh) updates the diff in place — no loading flicker.
   $effect(() => {
     const f = file
-    if (!f || f.isBinary) { diff = []; diffError = false; diffLoading = false; return }
+    if (!f || f.isBinary) { diff = []; diffError = false; diffLoading = false; lastDiffPath = ''; return }
     const repoPath = session.config.currentRepo
     if (!repoPath) { diff = []; diffLoading = false; return }
-    diffLoading = true
+    const samePath = f.path === lastDiffPath
+    lastDiffPath = f.path
+    if (!samePath) { diffLoading = true; diff = [] }
     diffError = false
     api
       .getDiff(repoPath, f.path)
       .then((d) => { if (file?.path === f.path) diff = d })
-      .catch(() => { if (file?.path === f.path) { diffError = true; diff = [] } })
+      .catch(() => { if (file?.path === f.path) diffError = true })
       .finally(() => { if (file?.path === f.path) diffLoading = false })
   })
 
