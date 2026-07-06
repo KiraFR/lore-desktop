@@ -1,4 +1,5 @@
 mod commands;
+mod config;
 mod lore;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,6 +24,8 @@ pub fn run() {
         commands::lore_history,
         commands::lore_repositories,
         commands::lore_clone,
+        config::config_load,
+        config::config_save,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
