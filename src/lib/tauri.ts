@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { HistoryPage, LoreApi, RepoEntry, StatusResult } from './types'
+import type { AppConfig, HistoryPage, LoreApi, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -18,4 +18,6 @@ export const tauriApi: LoreApi = {
   },
   cloneRepo: (serverUrl, repoId, repoName, destParent) =>
     invoke<string>('lore_clone', { serverUrl, repoId, repoName, destParent }),
+  loadConfig: () => invoke<AppConfig>('config_load'),
+  saveConfig: (config) => invoke<void>('config_save', { config }),
 }
