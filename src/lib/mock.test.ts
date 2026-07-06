@@ -59,4 +59,11 @@ describe('mock api', () => {
     const cloned = await mock.cloneRepo('lore://demo:41337', 'id1', 'game-main', 'C:/repos')
     expect(cloned).toBe('C:/repos/game-main')
   })
+
+  it('getDiff returns structured diff lines', async () => {
+    const d = await mock.getDiff('C:/repos/game', 'src/x.ts')
+    expect(d.length).toBeGreaterThan(0)
+    expect(d.some((l) => l.kind === 'add')).toBe(true)
+    expect(d[0]).toHaveProperty('text')
+  })
 })

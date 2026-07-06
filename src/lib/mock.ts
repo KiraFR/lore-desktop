@@ -1,4 +1,4 @@
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, LockEntry, LoreApi, MergePreview, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergePreview, RepoEntry, StatusResult } from './types'
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
@@ -139,6 +139,16 @@ export const mock: LoreApi = {
     await delay(250)
     const s = stateFor(repoPath)
     return { branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead, files: [...s.files] } as StatusResult
+  },
+  async getDiff(_repoPath: string, _path: string) {
+    await delay(120)
+    return [
+      { kind: 'hunk', text: '@@ -1,3 +1,4 @@' },
+      { kind: 'context', text: ' export const x = 1' },
+      { kind: 'del', text: '-const y = 2' },
+      { kind: 'add', text: '+const y = 3' },
+      { kind: 'add', text: '+const z = 4' },
+    ] as DiffLine[]
   },
   async commitAll(repoPath: string, message: string) {
     if (!message.trim()) throw new Error('commit message is required')

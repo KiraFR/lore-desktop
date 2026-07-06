@@ -78,6 +78,11 @@ export interface HistoryPage {
   nextCursor: string | null
 }
 
+export interface DiffLine {
+  kind: 'add' | 'del' | 'context' | 'hunk'
+  text: string
+}
+
 /** The data boundary the whole app uses. Mock now; Tauri-invoke later. */
 export interface LoreApi {
   isAuthenticated(): Promise<boolean>
@@ -89,6 +94,7 @@ export interface LoreApi {
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
+  getDiff(repoPath: string, path: string): Promise<DiffLine[]>
   commitAll(repoPath: string, message: string): Promise<void>
   push(repoPath: string): Promise<void>
   sync(repoPath: string): Promise<void>
