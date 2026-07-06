@@ -1,9 +1,30 @@
 <script lang="ts">
-  import type { ChangedFile } from './types'
+  import type { ChangedFile, DiffLine } from './types'
   import { repo, setLock } from './repo.svelte'
+  import { session } from './session.svelte'
+  import { api } from './api'
   import Icon from './Icon.svelte'
 
   let { file }: { file: ChangedFile | null } = $props()
+
+  let diff = $state<DiffLine[]>([])
+  let diffLoading = $state(false)
+  let diffError = $state(false)
+
+  // Fetch the unified diff whenever a text file is selected.
+  $effect(() => {
+    const f = file
+    if (!f || f.isBinary) { diff = []; diffError = false; return }
+    const repoPath = session.config.currentRepo
+    if (!repoPath) { diff = []; return }
+    diffLoading = true
+    diffError = false
+    api
+      .getDiff(repoPath, f.path)
+      .then((d) => { if (file?.path === f.path) diff = d })
+      .catch(() => { if (file?.path === f.path) { diffError = true; diff = [] } })
+      .finally(() => { if (file?.path === f.path) diffLoading = false })
+  })
 
   const KB = 1024, MB = 1024 * 1024
   function fmtSize(n: number): string {
@@ -66,10 +87,17 @@
           {/if}
         </div>
         <p class="note muted"><Icon name="info" size={14} /> Binary asset — visual compare, no text diff.</p>
+      {:else if diffLoading}
+        <div class="textnote muted"><Icon name="file" size={22} /><p>Loading diff…</p></div>
+      {:else if diffError}
+        <div class="textnote muted"><Icon name="file" size={22} /><p>Couldn't load diff.</p></div>
+      {:else if diff.length === 0}
+        <div class="textnote muted"><Icon name="file" size={22} /><p>No text changes to show.</p></div>
       {:else}
-        <div class="textnote muted">
-          <Icon name="file" size={22} />
-          <p>Text file — line-by-line diff arrives with real Lore wiring.</p>
+        <div class="diff">
+          {#each diff as line, i (i)}
+            <div class="dl {line.kind}">{line.text}</div>
+          {/each}
         </div>
       {/if}
 
@@ -119,6 +147,12 @@
   .note { display: flex; align-items: center; gap: 7px; font-size: 11px; margin: 12px 0 4px; }
   .textnote { display: flex; align-items: center; gap: 12px; padding: 22px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; }
   .textnote p { margin: 0; }
+  .diff { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin: 4px 0; }
+  .dl { white-space: pre; padding: 0 10px; }
+  .dl.add { background: rgba(63, 185, 80, .12); color: var(--added); }
+  .dl.del { background: rgba(248, 81, 73, .12); color: var(--deleted); }
+  .dl.context { color: var(--text-muted); }
+  .dl.hunk { color: var(--accent-text); background: var(--panel); }
   .meta { margin: 18px 0 0; }
   .meta > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
   dt { color: var(--text-muted); }
