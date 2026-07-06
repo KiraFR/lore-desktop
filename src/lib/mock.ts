@@ -79,16 +79,16 @@ function seedFiles(): ChangedFile[] {
 
 function buildBranches(extra: number): Branch[] {
   const base: Branch[] = [
-    { name: 'main', current: true, rev: 146 },
-    { name: 'feature/loot', current: false, rev: 151 },
-    { name: 'fix/lighting-bake', current: false, rev: 149 },
-    { name: 'experimental/ai-nav', current: false, rev: 140 },
+    { name: 'main', current: true },
+    { name: 'feature/loot', current: false },
+    { name: 'fix/lighting-bake', current: false },
+    { name: 'experimental/ai-nav', current: false },
   ]
   const prefixes = ['feature', 'fix', 'chore', 'release', 'hotfix', 'exp', 'wip', 'user']
   const topics = ['loot', 'lighting', 'nav', 'inventory', 'audio', 'netcode', 'mesh', 'ui', 'save', 'recoil', 'input', 'materials', 'ai', 'physics', 'vfx', 'hud', 'quest', 'crafting']
   const gen: Branch[] = []
   for (let i = 0; i < extra; i++) {
-    gen.push({ name: `${prefixes[i % prefixes.length]}/${topics[(i * 5) % topics.length]}-${i + 1}`, current: false, rev: 90 + (i % 70) })
+    gen.push({ name: `${prefixes[i % prefixes.length]}/${topics[(i * 5) % topics.length]}-${i + 1}`, current: false })
   }
   return [...base, ...gen]
 }
@@ -195,7 +195,7 @@ export const mock: LoreApi = {
   async createBranch(repoPath: string, name: string, _basedOn: string) {
     await delay(400)
     branchList = branchList.map((b) => ({ ...b, current: false }))
-    branchList = [...branchList, { name, current: true, rev: 146 }]
+    branchList = [...branchList, { name, current: true }]
     stateFor(repoPath).branch = name
   },
   async previewMerge(_repoPath: string, source: string, target: string): Promise<MergePreview> {

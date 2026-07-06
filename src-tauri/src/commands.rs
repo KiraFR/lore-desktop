@@ -399,6 +399,92 @@ pub fn lore_locks(repo_path: String) -> Result<Vec<LockEntryDto>, String> {
     Ok(locks_from(&events, &me))
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchDto {
+    pub name: String,
+    pub current: bool,
+}
+
+/// Union of `branchListEntry` events (which stream once per location, local then
+/// remote) deduped by name. `current` folds `isCurrent` across every entry for a
+/// name (only local entries carry it); archived branches are dropped. First-seen
+/// order is preserved, so local branches come first and remote-only ones append.
+fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
+    let mut order: Vec<String> = Vec::new();
+    let mut current: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for d in events_with_tag(events, "branchListEntry") {
+        if d.get("archived").map(json_truthy).unwrap_or(false) {
+            continue;
+        }
+        let name = match d.get("name").and_then(|v| v.as_str()) {
+            Some(n) if !n.is_empty() => n.to_string(),
+            _ => continue,
+        };
+        if d.get("isCurrent").map(json_truthy).unwrap_or(false) {
+            current.insert(name.clone());
+        }
+        if seen.insert(name.clone()) {
+            order.push(name);
+        }
+    }
+    order
+        .into_iter()
+        .map(|name| BranchDto { current: current.contains(&name), name })
+        .collect()
+}
+
+#[tauri::command]
+pub fn lore_branches(repo_path: String) -> Result<Vec<BranchDto>, String> {
+    let events = run_lore(&["branch", "list", "--repository", &repo_path])?;
+    Ok(branches_from(&events))
+}
+
+#[tauri::command]
+pub fn lore_switch_branch(repo_path: String, name: String) -> Result<(), String> {
+    run_lore(&["branch", "switch", &name, "--repository", &repo_path])?;
+    Ok(())
+}
+
+/// `lore branch create` makes the branch from the current latest and auto-switches
+/// to it, so no separate switch is needed. The base is always the current HEAD.
+#[tauri::command]
+pub fn lore_create_branch(repo_path: String, name: String) -> Result<(), String> {
+    run_lore(&["branch", "create", &name, "--repository", &repo_path])?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod branches_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const SAMPLE: &str = concat!(
+        r#"{"tagName":"branchListBegin","data":{"location":"local"}}"#, "\n",
+        r#"{"tagName":"branchListEntry","data":{"location":"local","name":"main","latest":"a1","isCurrent":true,"archived":false}}"#, "\n",
+        r#"{"tagName":"branchListEntry","data":{"location":"local","name":"old/thing","latest":"a2","isCurrent":false,"archived":true}}"#, "\n",
+        r#"{"tagName":"branchListEnd","data":{"location":"local","count":2}}"#, "\n",
+        r#"{"tagName":"branchListBegin","data":{"location":"remote"}}"#, "\n",
+        r#"{"tagName":"branchListEntry","data":{"location":"remote","name":"main","latest":"a1","isCurrent":false,"archived":false}}"#, "\n",
+        r#"{"tagName":"branchListEntry","data":{"location":"remote","name":"feature/x","latest":"a3","isCurrent":false,"archived":false}}"#, "\n",
+        r#"{"tagName":"branchListEnd","data":{"location":"remote","count":2}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn unions_dedupes_and_marks_current() {
+        let events = parse_events(SAMPLE).unwrap();
+        let branches = branches_from(&events);
+        // main (deduped local+remote) + feature/x (remote-only); archived old/thing dropped.
+        assert_eq!(branches.len(), 2);
+        assert_eq!(branches[0].name, "main"); // local order first
+        assert!(branches[0].current);
+        assert_eq!(branches[1].name, "feature/x");
+        assert!(!branches[1].current);
+    }
+}
+
 #[cfg(test)]
 mod locks_tests {
     use super::*;

@@ -3,6 +3,7 @@
   import { session } from './session.svelte'
   import { refreshStatus } from './repo.svelte'
   import { setView } from './ui.svelte'
+  import { toastError } from './toast'
   import type { Branch } from './types'
   import Icon from './Icon.svelte'
 
@@ -33,7 +34,8 @@
   async function load() {
     const p = session.config.currentRepo
     if (!p) return
-    branches = await api.getBranches(p)
+    try { branches = await api.getBranches(p) }
+    catch (e) { toastError("Couldn't load branches", e) }
   }
   $effect(() => { load() })
 
@@ -41,20 +43,30 @@
     const p = session.config.currentRepo
     if (!p || busy) return
     busy = true
-    await api.switchBranch(p, name)
-    await refreshStatus()
-    busy = false
-    onclose()
+    try {
+      await api.switchBranch(p, name)
+      await refreshStatus()
+      onclose()
+    } catch (e) {
+      toastError('Switch failed', e)
+    } finally {
+      busy = false
+    }
   }
 
   async function create() {
     const p = session.config.currentRepo
     if (!p || !newName.trim() || busy) return
     busy = true
-    await api.createBranch(p, newName.trim(), currentName)
-    await refreshStatus()
-    busy = false
-    onclose()
+    try {
+      await api.createBranch(p, newName.trim(), currentName)
+      await refreshStatus()
+      onclose()
+    } catch (e) {
+      toastError('Create failed', e)
+    } finally {
+      busy = false
+    }
   }
 
   function mergeInto() { setView('merge'); onclose() }
@@ -70,7 +82,7 @@
                 onclick={() => (b.current ? onclose() : switchTo(b.name))} disabled={busy}>
           <span class="dot" style="background:{LANE[(winFirst + k) % LANE.length]}"></span>
           <span class="bn">{b.name}</span>
-          {#if b.current}<Icon name="check" size={14} />{:else}<span class="rev">#{b.rev}</span>{/if}
+          {#if b.current}<Icon name="check" size={14} />{/if}
         </button>
       {/each}
     </div>
@@ -98,7 +110,6 @@
   .item.cur { color: var(--accent-text); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .bn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item .rev { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
   .item.cur :global(svg) { margin-left: auto; color: var(--accent-text); }
   .div { height: 1px; background: var(--border); margin: 6px 0; }
   .action { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }

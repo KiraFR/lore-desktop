@@ -44,7 +44,6 @@ export interface Commit {
 export interface Branch {
   name: string
   current: boolean
-  rev: number      // tip revision
 }
 
 export interface MergeConflict {

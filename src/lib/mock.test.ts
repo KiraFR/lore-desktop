@@ -60,6 +60,14 @@ describe('mock api', () => {
     expect(cloned).toBe('C:/repos/game-main')
   })
 
+  it('getBranches returns name+current rows (one current)', async () => {
+    const branches = await mock.getBranches('C:/repos/game')
+    expect(branches.length).toBeGreaterThan(0)
+    expect(branches[0]).toHaveProperty('name')
+    expect(branches[0]).not.toHaveProperty('rev')
+    expect(branches.filter((b) => b.current)).toHaveLength(1)
+  })
+
   it('getDiff returns structured diff lines', async () => {
     const d = await mock.getDiff('C:/repos/game', 'src/x.ts')
     expect(d.length).toBeGreaterThan(0)
