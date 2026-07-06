@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
+  import { repo } from './repo.svelte'
   import type { Commit } from './types'
 
   let commits = $state<Commit[]>([])
@@ -62,6 +63,10 @@
   const ROW_H = 56, BASE_X = 18, LANE_GAP = 22, BUFFER = 6
   const laneX = (l: number) => BASE_X + l * LANE_GAP
 
+  // History is newest-first, so the first `ahead` commits are the ones not yet
+  // pushed to the server. Edges leaving those commits render dashed.
+  const ahead = $derived(repo.status?.localAhead ?? 0)
+
   const idxMap = $derived(new Map(commits.map((c, i) => [c.id, i])))
   const maxLane = $derived(commits.reduce((m, c) => Math.max(m, c.lane), 0))
   const graphWidth = $derived(laneX(maxLane) + 16)
@@ -71,7 +76,7 @@
   const windowCommits = $derived(commits.slice(first, last))
 
   const win = $derived.by(() => {
-    const edges: { d: string; col: string }[] = []
+    const edges: { d: string; col: string; dashed: boolean }[] = []
     const dots: { x: number; y: number; color: string; merge: boolean }[] = []
     for (let i = first; i < last; i++) {
       const c = commits[i]
@@ -87,7 +92,7 @@
         const d = c.lane === commits[j].lane
           ? `M${x1} ${y1} L${x2} ${y2}`
           : `M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}`
-        edges.push({ d, col })
+        edges.push({ d, col, dashed: i < ahead })
       }
     }
     return { edges, dots }
@@ -120,7 +125,7 @@
       {:else}
         <div class="viewport" style="height:{total}px">
           <svg class="graph" style="top:{first * ROW_H}px" width={graphWidth} height={(last - first) * ROW_H} fill="none">
-            {#each win.edges as e}<path d={e.d} stroke={e.col} stroke-width="2" />{/each}
+            {#each win.edges as e}<path d={e.d} stroke={e.col} stroke-width="2" stroke-dasharray={e.dashed ? '4 3' : undefined} />{/each}
             {#each win.dots as dt}
               {#if dt.merge}
                 <circle cx={dt.x} cy={dt.y} r="6" fill="var(--bg)" stroke={dt.color} stroke-width="2" />
