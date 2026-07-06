@@ -20,4 +20,8 @@ export const tauriApi: LoreApi = {
     invoke<string>('lore_clone', { serverUrl, repoId, repoName, destParent }),
   loadConfig: () => invoke<AppConfig>('config_load'),
   saveConfig: (config) => invoke<void>('config_save', { config }),
+  commitAll: (repoPath, message) => invoke<void>('lore_commit', { repoPath, message }),
+  push: (repoPath) => invoke<void>('lore_push', { repoPath }),
+  sync: (repoPath) => invoke<void>('lore_sync', { repoPath }),
+  setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
 }
