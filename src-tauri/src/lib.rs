@@ -26,6 +26,10 @@ pub fn run() {
         commands::lore_clone,
         config::config_load,
         config::config_save,
+        commands::lore_commit,
+        commands::lore_push,
+        commands::lore_sync,
+        commands::lore_set_lock,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

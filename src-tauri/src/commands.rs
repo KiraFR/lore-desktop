@@ -293,6 +293,64 @@ pub fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), 
     if status.success() { Ok(()) } else { Err("sign-in failed or was cancelled".to_string()) }
 }
 
+/// `lore lock` subcommand for a lock/unlock toggle.
+fn lock_subcommand(lock: bool) -> &'static str {
+    if lock {
+        "acquire"
+    } else {
+        "release"
+    }
+}
+
+/// Stage the whole working tree then commit it. Selective staging is a follow-up;
+/// this commits everything, matching the current UI (checkboxes are decorative).
+#[tauri::command]
+pub fn lore_commit(repo_path: String, message: String) -> Result<(), String> {
+    if message.trim().is_empty() {
+        return Err("commit message is required".to_string());
+    }
+    run_lore(&["stage", ".", "--scan", "--repository", &repo_path])?;
+    run_lore(&["commit", &message, "--repository", &repo_path])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn lore_push(repo_path: String) -> Result<(), String> {
+    run_lore(&["push", "--repository", &repo_path])?;
+    Ok(())
+}
+
+/// Plain `lore sync` — pulls/merges the remote into the local branch
+/// non-destructively (NO `--reset`, which would discard local modifications).
+#[tauri::command]
+pub fn lore_sync(repo_path: String) -> Result<(), String> {
+    run_lore(&["sync", "--repository", &repo_path])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), String> {
+    run_lore(&["lock", lock_subcommand(lock), &path, "--repository", &repo_path])?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod writes_tests {
+    use super::*;
+
+    #[test]
+    fn lock_subcommand_maps_bool() {
+        assert_eq!(lock_subcommand(true), "acquire");
+        assert_eq!(lock_subcommand(false), "release");
+    }
+
+    #[test]
+    fn commit_rejects_empty_message() {
+        let err = lore_commit("C:/nonexistent-repo".into(), "   ".into()).unwrap_err();
+        assert!(err.contains("message"), "err was {err}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
