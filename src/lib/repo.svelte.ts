@@ -1,7 +1,7 @@
 import { api } from './api'
 import { session } from './session.svelte'
 import { toastError } from './toast'
-import type { LockEntry, StatusResult } from './types'
+import type { Branch, LockEntry, StatusResult } from './types'
 
 // The current repository's status + in-flight action, shared by the title bar
 // (branch, ahead/behind, sync, push) and the Changes view (files, commit).
@@ -12,11 +12,22 @@ export const repo = $state({
 
 export const locks = $state({ list: [] as LockEntry[] })
 
+// Branches are shared so `refreshStatus` can keep them warm — a `sync` may pull new
+// remote branches, and a window-focus refresh picks up branches created elsewhere.
+export const branches = $state({ list: [] as Branch[] })
+
 export async function refreshLocks() {
   const path = session.config.currentRepo
   if (!path) { locks.list = []; return }
   try { locks.list = await api.getLocks(path) }
   catch (e) { toastError("Couldn't load locks", e) }
+}
+
+export async function refreshBranches(silent = false) {
+  const path = session.config.currentRepo
+  if (!path) { branches.list = []; return }
+  try { branches.list = await api.getBranches(path) }
+  catch (e) { if (!silent) toastError("Couldn't load branches", e) }
 }
 
 // `silent` refreshes (e.g. the window-focus refresh) skip the `busy` flag so they
@@ -36,6 +47,9 @@ export async function refreshStatus(silent = false) {
     status.files = status.files.map((f) => ({ ...f, lockedBy: holderByPath.get(f.path) ?? null }))
     repo.status = status
     locks.list = lockList
+    // Best-effort, decoupled from the status paint: refresh the branch list at the
+    // same trigger points (focus, sync, push, commit, repo change).
+    refreshBranches(true)
   } catch (e) { toastError("Couldn't load changes", e) }
   finally { if (!silent) repo.busy = '' }
 }

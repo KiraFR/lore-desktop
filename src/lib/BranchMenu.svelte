@@ -1,22 +1,20 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { refreshStatus } from './repo.svelte'
+  import { refreshStatus, refreshBranches, branches } from './repo.svelte'
   import { setView } from './ui.svelte'
   import { toastError } from './toast'
-  import type { Branch } from './types'
   import Icon from './Icon.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
-  let branches = $state<Branch[]>([])
   let filter = $state('')
   let creating = $state(false)
   let newName = $state('')
   let busy = $state(false)
 
-  const currentName = $derived(branches.find((b) => b.current)?.name ?? 'main')
-  const shown = $derived(branches.filter((b) => b.name.toLowerCase().includes(filter.trim().toLowerCase())))
+  const currentName = $derived(branches.list.find((b) => b.current)?.name ?? 'main')
+  const shown = $derived(branches.list.filter((b) => b.name.toLowerCase().includes(filter.trim().toLowerCase())))
 
   const LANE = ['#3067d4', '#3fb950', '#d29922', '#a371f7', '#ec6a5e']
 
@@ -31,13 +29,9 @@
   function onListScroll() { if (listEl) listScroll = listEl.scrollTop }
   $effect(() => { filter; listScroll = 0; if (listEl) listEl.scrollTop = 0 })
 
-  async function load() {
-    const p = session.config.currentRepo
-    if (!p) return
-    try { branches = await api.getBranches(p) }
-    catch (e) { toastError("Couldn't load branches", e) }
-  }
-  $effect(() => { load() })
+  // Show the cached list immediately (no flash), then refresh on open so a menu
+  // opened long after the last focus/sync is still current.
+  $effect(() => { refreshBranches() })
 
   async function switchTo(name: string) {
     const p = session.config.currentRepo
