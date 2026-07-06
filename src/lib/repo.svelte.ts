@@ -23,8 +23,18 @@ export async function refreshStatus() {
   const path = session.config.currentRepo
   if (!path) { repo.status = null; return }
   repo.busy = 'status'
-  try { repo.status = await api.getStatus(path) }
-  catch (e) { toastError("Couldn't load changes", e) }
+  try {
+    const status = await api.getStatus(path)
+    // Locks are a separate query; annotate each file's holder so the Changes /
+    // preview lock toggle reflects reality. Best-effort — a lock-query failure
+    // must not hide the status.
+    let lockList: LockEntry[] = []
+    try { lockList = await api.getLocks(path) } catch { /* ignore */ }
+    const holderByPath = new Map(lockList.map((l) => [l.path, l.holder]))
+    status.files = status.files.map((f) => ({ ...f, lockedBy: holderByPath.get(f.path) ?? null }))
+    repo.status = status
+    locks.list = lockList
+  } catch (e) { toastError("Couldn't load changes", e) }
   finally { repo.busy = '' }
 }
 

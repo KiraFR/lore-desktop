@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, HistoryPage, LoreApi, RepoEntry, StatusResult } from './types'
+import type { AppConfig, HistoryPage, LockEntry, LoreApi, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -24,4 +24,5 @@ export const tauriApi: LoreApi = {
   push: (repoPath) => invoke<void>('lore_push', { repoPath }),
   sync: (repoPath) => invoke<void>('lore_sync', { repoPath }),
   setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
+  getLocks: (repoPath) => invoke<LockEntry[]>('lore_locks', { repoPath }),
 }

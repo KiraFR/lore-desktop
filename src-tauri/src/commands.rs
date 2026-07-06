@@ -342,6 +342,88 @@ pub fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), 
     Ok(())
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LockEntryDto {
+    pub path: String,
+    pub holder: String,
+    pub when: String,
+}
+
+/// The signed-in user's id (from `auth list`), best-effort — used to label their
+/// own locks as "you". Empty if it can't be determined.
+fn current_user_id() -> String {
+    run_lore(&["auth", "list"])
+        .ok()
+        .and_then(|evs| {
+            events_with_tag(&evs, "authIdentity")
+                .into_iter()
+                .find_map(|d| d.get("userId").and_then(|v| v.as_str()).map(String::from))
+        })
+        .unwrap_or_default()
+}
+
+/// Map `lockFileQuery` events → `LockEntry`, resolving each owner id to a display
+/// name via the trailing `authUserInfo` events (own locks show as "you").
+fn locks_from(events: &[LoreEvent], me: &str) -> Vec<LockEntryDto> {
+    let mut users: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for d in events_with_tag(events, "authUserInfo") {
+        if let (Some(id), Some(name)) =
+            (d.get("id").and_then(|v| v.as_str()), d.get("name").and_then(|v| v.as_str()))
+        {
+            users.insert(id.to_string(), name.to_string());
+        }
+    }
+    events_with_tag(events, "lockFileQuery")
+        .into_iter()
+        .map(|d| {
+            let owner = d.get("owner").and_then(|v| v.as_str()).unwrap_or("");
+            let holder = if !me.is_empty() && owner == me {
+                "you".to_string()
+            } else {
+                users.get(owner).cloned().unwrap_or_else(|| owner.to_string())
+            };
+            LockEntryDto {
+                path: d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                holder,
+                when: relative_time(d.get("lockedAt").and_then(|v| v.as_u64()).unwrap_or(0)),
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn lore_locks(repo_path: String) -> Result<Vec<LockEntryDto>, String> {
+    let me = current_user_id();
+    let events = run_lore(&["lock", "query", "--repository", &repo_path])?;
+    Ok(locks_from(&events, &me))
+}
+
+#[cfg(test)]
+mod locks_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const SAMPLE: &str = concat!(
+        r#"{"tagName":"lockFileQueryBegin","data":{"count":1}}"#, "\n",
+        r#"{"tagName":"lockFileQuery","data":{"branch":"b1","path":"notes.txt","owner":"u1","lockedAt":1783332656647}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        r#"{"tagName":"authUserInfo","data":{"id":"u1","name":"jimmy@example.com"}}"#, "\n",
+    );
+
+    #[test]
+    fn resolves_owner_and_you() {
+        let events = parse_events(SAMPLE).unwrap();
+        let mine = locks_from(&events, "u1");
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].path, "notes.txt");
+        assert_eq!(mine[0].holder, "you");
+
+        let theirs = locks_from(&events, "someone-else");
+        assert_eq!(theirs[0].holder, "jimmy@example.com");
+    }
+}
+
 #[cfg(test)]
 mod writes_tests {
     use super::*;
