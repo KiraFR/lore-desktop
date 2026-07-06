@@ -19,6 +19,20 @@
 
   onMount(bootstrap)
 
+  // Re-check the working tree when the window regains focus, so external edits
+  // (made in an editor while the app was in the background) appear without a
+  // manual repo re-open.
+  onMount(() => {
+    const onFocus = () => {
+      if (session.config.currentRepo && !repo.busy) {
+        refreshStatus()
+        refreshLocks()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  })
+
   // Reload status + locks whenever the selected repository changes.
   $effect(() => {
     session.config.currentRepo

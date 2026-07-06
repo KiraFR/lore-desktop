@@ -93,7 +93,11 @@ fn json_truthy(v: &serde_json::Value) -> bool {
 
 #[tauri::command]
 pub fn lore_status(repo_path: String) -> Result<StatusResultDto, String> {
-    let events = run_lore(&["status", "--repository", &repo_path])?;
+    // `--scan` reconciles the working tree so edits/adds/deletes show up in the
+    // Changes view (a read-only status without it misses unstaged working changes,
+    // which would leave the Commit button disabled). Non-destructive: it refreshes
+    // dirty flags on the local working copy, it does not touch file contents.
+    let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
     Ok(status_from(&events))
 }
 
@@ -330,7 +334,11 @@ pub fn lore_sync(repo_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), String> {
-    run_lore(&["lock", lock_subcommand(lock), &path, "--repository", &repo_path])?;
+    // `lore lock` resolves a relative path against the process cwd, not `--repository`,
+    // so build an absolute path inside the repo.
+    let abs = std::path::Path::new(&repo_path).join(&path);
+    let abs_str = abs.to_string_lossy();
+    run_lore(&["lock", lock_subcommand(lock), &abs_str, "--repository", &repo_path])?;
     Ok(())
 }
 
