@@ -1,6 +1,6 @@
 import { api } from './api'
 import { session } from './session.svelte'
-import { toastError } from './toast'
+import { toastError, toastAction } from './toast'
 import type { Branch, LockEntry, StatusResult } from './types'
 
 // The current repository's status + in-flight action, shared by the title bar
@@ -68,8 +68,34 @@ async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Prom
 }
 
 export const commit = (message: string) => act('commit', (p) => api.commitAll(p, message))
-export const push = () => act('push', (p) => api.push(p))
 export const sync = () => act('sync', (p) => api.sync(p))
+
+// Push, then offer to release the locks the user held on files that were part of
+// this push (the lock-workflow's "done editing" step). The candidate set must be
+// computed BEFORE the push, while the remote and local tips still differ.
+export const push = () => act('push', async (p) => {
+  let candidates: string[] = []
+  try { candidates = await api.pushedLockFiles(p) } catch { /* best-effort; never block the push */ }
+  await api.push(p)
+  if (candidates.length) {
+    const n = candidates.length
+    toastAction(`${n} locked file${n > 1 ? 's' : ''} pushed`, {
+      label: 'Release locks',
+      run: () => releaseLocks(candidates),
+    })
+  }
+})
+
+export async function releaseLocks(paths: string[]) {
+  const p = session.config.currentRepo
+  if (!p) return
+  for (const path of paths) {
+    try { await api.setLock(p, path, false) }
+    catch (e) { toastError('Unlock failed', e) }
+  }
+  await refreshStatus()
+  await refreshLocks()
+}
 
 export async function setLock(path: string, lock: boolean) {
   const p = session.config.currentRepo

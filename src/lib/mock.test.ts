@@ -68,6 +68,12 @@ describe('mock api', () => {
     expect(branches.filter((b) => b.current)).toHaveLength(1)
   })
 
+  it('pushedLockFiles returns the paths I hold locked', async () => {
+    const files = await mock.pushedLockFiles('C:/repos/game')
+    expect(Array.isArray(files)).toBe(true)
+    expect(files).toContain('Content/Maps/Level_01.umap')
+  })
+
   it('getDiff returns structured diff lines', async () => {
     const d = await mock.getDiff('C:/repos/game', 'src/x.ts')
     expect(d.length).toBeGreaterThan(0)

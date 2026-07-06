@@ -165,6 +165,11 @@ export const mock: LoreApi = {
     await delay(500)
     stateFor(repoPath).remoteAhead = 0
   },
+  async pushedLockFiles(_repoPath: string) {
+    await delay(150)
+    // Stand-in for the real diff∩locks: every lock I currently hold.
+    return lockList.filter((l) => l.holder === 'you').map((l) => l.path)
+  },
   async setLock(repoPath: string, path: string, lock: boolean) {
     await delay(200)
     const f = stateFor(repoPath).files.find((x) => x.path === path)

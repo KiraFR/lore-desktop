@@ -99,6 +99,8 @@ export interface LoreApi {
   commitAll(repoPath: string, message: string): Promise<void>
   push(repoPath: string): Promise<void>
   sync(repoPath: string): Promise<void>
+  /** Files the current user holds locked that are part of the pending push. */
+  pushedLockFiles(repoPath: string): Promise<string[]>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
   getHistory(repoPath: string, length: number, cursor?: string): Promise<HistoryPage>
   getBranches(repoPath: string): Promise<Branch[]>

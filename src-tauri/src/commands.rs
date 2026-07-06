@@ -455,6 +455,94 @@ pub fn lore_create_branch(repo_path: String, name: String) -> Result<(), String>
     Ok(())
 }
 
+/// The set of file paths changed in a revision-range diff (`fileDiff` events).
+fn pushed_paths_from(events: &[LoreEvent]) -> std::collections::HashSet<String> {
+    events_with_tag(events, "fileDiff")
+        .into_iter()
+        .filter_map(|d| d.get("path").and_then(|v| v.as_str()).map(String::from))
+        .collect()
+}
+
+/// True for a revision hash that is unset/all-zero (no remote tip yet → first push).
+fn is_zero_revision(rev: &str) -> bool {
+    rev.is_empty() || rev.chars().all(|c| c == '0')
+}
+
+/// Files the signed-in user holds locked AND that are part of the pending push
+/// (the diff between the remote tip and the local tip). Used to offer releasing
+/// just-pushed locks after a push. Empty when nothing is ahead; on a first push
+/// (no remote tip yet) every held lock qualifies since the whole tree is pushed.
+#[tauri::command]
+pub fn lore_pushed_lock_files(repo_path: String) -> Result<Vec<String>, String> {
+    // 1. My held locks; nothing to offer if I hold none.
+    let me = current_user_id();
+    let lock_events = run_lore(&["lock", "query", "--repository", &repo_path])?;
+    let mine: Vec<String> = locks_from(&lock_events, &me)
+        .into_iter()
+        .filter(|l| l.holder == "you")
+        .map(|l| l.path)
+        .collect();
+    if mine.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // 2. Remote vs local tip; nothing to push if they match.
+    let status_events = run_lore(&["status", "--repository", &repo_path])?;
+    let rev = events_with_tag(&status_events, "repositoryStatusRevision")
+        .into_iter()
+        .next();
+    let (remote, local) = match rev {
+        Some(d) => (
+            d.get("revisionRemote").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            d.get("revisionLocal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        ),
+        None => return Ok(vec![]),
+    };
+    if is_zero_revision(&local) || remote == local {
+        return Ok(vec![]);
+    }
+
+    // 3. First push: the whole working tree is pushed, so every held lock qualifies.
+    if is_zero_revision(&remote) {
+        return Ok(mine);
+    }
+
+    // 4. Otherwise intersect my locks with the pushed changeset.
+    let diff_events = run_lore(&[
+        "diff", "--source", &remote, "--target", &local, "--repository", &repo_path,
+    ])?;
+    let pushed = pushed_paths_from(&diff_events);
+    Ok(mine.into_iter().filter(|p| pushed.contains(p)).collect())
+}
+
+#[cfg(test)]
+mod pushed_lock_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const DIFF: &str = concat!(
+        r#"{"tagName":"fileDiff","data":{"path":"notes.txt","patch":"@@ -1 +1 @@"}}"#, "\n",
+        r#"{"tagName":"fileDiff","data":{"path":"src/main.rs","patch":"@@ -1 +1 @@"}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn collects_changed_paths() {
+        let events = parse_events(DIFF).unwrap();
+        let paths = pushed_paths_from(&events);
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains("notes.txt"));
+        assert!(paths.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn zero_revision_detection() {
+        assert!(is_zero_revision(""));
+        assert!(is_zero_revision("0000000000000000000000000000000000000000000000000000000000000000"));
+        assert!(!is_zero_revision("a3e42aeae4e3"));
+    }
+}
+
 #[cfg(test)]
 mod branches_tests {
     use super::*;
