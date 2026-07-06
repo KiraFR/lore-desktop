@@ -522,3 +522,68 @@ mod clone_tests {
         assert_eq!(url, "lore://host:41337/id1");
     }
 }
+
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffLineDto {
+    pub kind: String, // "add" | "del" | "context" | "hunk"
+    pub text: String,
+}
+
+/// Parse a unified-diff patch into structured lines. The `---`/`+++` file headers
+/// are dropped; the `+`/`-`/space prefix is kept as a gutter.
+fn parse_diff(patch: &str) -> Vec<DiffLineDto> {
+    patch
+        .lines()
+        .filter_map(|raw| {
+            let text = raw.trim_end_matches('\r').to_string();
+            if text.starts_with("+++") || text.starts_with("---") {
+                return None;
+            }
+            let kind = if text.starts_with("@@") {
+                "hunk"
+            } else if text.starts_with('+') {
+                "add"
+            } else if text.starts_with('-') {
+                "del"
+            } else {
+                "context"
+            };
+            Some(DiffLineDto { kind: kind.to_string(), text })
+        })
+        .collect()
+}
+
+/// Diff of `<path>` (current revision vs working copy) as structured lines.
+#[tauri::command]
+pub fn lore_diff(repo_path: String, path: String) -> Result<Vec<DiffLineDto>, String> {
+    // `lore diff` resolves a relative path against the process cwd, not
+    // `--repository`, so pass an absolute path (same as `lore lock`).
+    let abs = std::path::Path::new(&repo_path).join(&path);
+    let abs_str = abs.to_string_lossy();
+    let events = run_lore(&["diff", &abs_str, "--repository", &repo_path])?;
+    let patch = events_with_tag(&events, "fileDiff")
+        .into_iter()
+        .next()
+        .and_then(|d| d.get("patch").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    Ok(parse_diff(&patch))
+}
+
+#[cfg(test)]
+mod diff_tests {
+    use super::*;
+
+    #[test]
+    fn parses_unified_patch() {
+        let patch = "--- notes.txt@3\n+++ notes.txt\n@@ -1 +1,2 @@\n scratch notes\r\n+test notre\r\n";
+        let lines = parse_diff(patch);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].kind, "hunk");
+        assert_eq!(lines[1].kind, "context");
+        assert_eq!(lines[1].text, " scratch notes");
+        assert_eq!(lines[2].kind, "add");
+        assert_eq!(lines[2].text, "+test notre");
+    }
+}

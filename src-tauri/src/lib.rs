@@ -31,6 +31,7 @@ pub fn run() {
         commands::lore_sync,
         commands::lore_set_lock,
         commands::lore_locks,
+        commands::lore_diff,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
