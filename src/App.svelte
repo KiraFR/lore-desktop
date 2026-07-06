@@ -25,8 +25,7 @@
   onMount(() => {
     const onFocus = () => {
       if (session.config.currentRepo && !repo.busy) {
-        refreshStatus()
-        refreshLocks()
+        refreshStatus(true)
       }
     }
     window.addEventListener('focus', onFocus)

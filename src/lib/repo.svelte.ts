@@ -19,10 +19,12 @@ export async function refreshLocks() {
   catch (e) { toastError("Couldn't load locks", e) }
 }
 
-export async function refreshStatus() {
+// `silent` refreshes (e.g. the window-focus refresh) skip the `busy` flag so they
+// don't disable the action buttons or flash a loading state.
+export async function refreshStatus(silent = false) {
   const path = session.config.currentRepo
   if (!path) { repo.status = null; return }
-  repo.busy = 'status'
+  if (!silent) repo.busy = 'status'
   try {
     const status = await api.getStatus(path)
     // Locks are a separate query; annotate each file's holder so the Changes /
@@ -35,7 +37,7 @@ export async function refreshStatus() {
     repo.status = status
     locks.list = lockList
   } catch (e) { toastError("Couldn't load changes", e) }
-  finally { repo.busy = '' }
+  finally { if (!silent) repo.busy = '' }
 }
 
 async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Promise<void>) {
