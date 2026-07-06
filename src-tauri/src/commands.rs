@@ -527,31 +527,56 @@ mod clone_tests {
 #[serde(rename_all = "camelCase")]
 pub struct DiffLineDto {
     pub kind: String, // "add" | "del" | "context" | "hunk"
-    pub text: String,
+    pub text: String, // line content, WITHOUT the +/-/space prefix
+    pub old_line: Option<u32>,
+    pub new_line: Option<u32>,
 }
 
-/// Parse a unified-diff patch into structured lines. The `---`/`+++` file headers
-/// are dropped; the `+`/`-`/space prefix is kept as a gutter.
+/// Parse a hunk header `@@ -A[,B] +C[,D] @@` → `(old_start, new_start)`.
+fn parse_hunk_header(line: &str) -> (u32, u32) {
+    let mut old_start = 0;
+    let mut new_start = 0;
+    for tok in line.split_whitespace() {
+        if let Some(n) = tok.strip_prefix('-') {
+            old_start = n.split(',').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+        } else if let Some(n) = tok.strip_prefix('+') {
+            new_start = n.split(',').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+        }
+    }
+    (old_start, new_start)
+}
+
+/// Parse a unified-diff patch into structured lines with old/new line numbers
+/// (GitHub-Desktop-style gutters). The `---`/`+++` file headers are dropped; the
+/// `+`/`-`/space prefix is stripped from `text` (the `kind` carries the marker).
 fn parse_diff(patch: &str) -> Vec<DiffLineDto> {
-    patch
-        .lines()
-        .filter_map(|raw| {
-            let text = raw.trim_end_matches('\r').to_string();
-            if text.starts_with("+++") || text.starts_with("---") {
-                return None;
-            }
-            let kind = if text.starts_with("@@") {
-                "hunk"
-            } else if text.starts_with('+') {
-                "add"
-            } else if text.starts_with('-') {
-                "del"
-            } else {
-                "context"
-            };
-            Some(DiffLineDto { kind: kind.to_string(), text })
-        })
-        .collect()
+    let mut old_n: u32 = 0;
+    let mut new_n: u32 = 0;
+    let mut out = Vec::new();
+    for raw in patch.lines() {
+        let line = raw.trim_end_matches('\r');
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with("@@") {
+            let (o, n) = parse_hunk_header(line);
+            old_n = o;
+            new_n = n;
+            out.push(DiffLineDto { kind: "hunk".into(), text: line.to_string(), old_line: None, new_line: None });
+        } else if let Some(content) = line.strip_prefix('+') {
+            out.push(DiffLineDto { kind: "add".into(), text: content.to_string(), old_line: None, new_line: Some(new_n) });
+            new_n += 1;
+        } else if let Some(content) = line.strip_prefix('-') {
+            out.push(DiffLineDto { kind: "del".into(), text: content.to_string(), old_line: Some(old_n), new_line: None });
+            old_n += 1;
+        } else {
+            let content = line.strip_prefix(' ').unwrap_or(line);
+            out.push(DiffLineDto { kind: "context".into(), text: content.to_string(), old_line: Some(old_n), new_line: Some(new_n) });
+            old_n += 1;
+            new_n += 1;
+        }
+    }
+    out
 }
 
 /// Diff of `<path>` (current revision vs working copy) as structured lines.
@@ -581,9 +606,12 @@ mod diff_tests {
         let lines = parse_diff(patch);
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0].kind, "hunk");
+        assert_eq!((lines[0].old_line, lines[0].new_line), (None, None));
         assert_eq!(lines[1].kind, "context");
-        assert_eq!(lines[1].text, " scratch notes");
+        assert_eq!(lines[1].text, "scratch notes"); // prefix stripped
+        assert_eq!((lines[1].old_line, lines[1].new_line), (Some(1), Some(1)));
         assert_eq!(lines[2].kind, "add");
-        assert_eq!(lines[2].text, "+test notre");
+        assert_eq!(lines[2].text, "test notre"); // prefix stripped
+        assert_eq!((lines[2].old_line, lines[2].new_line), (None, Some(2)));
     }
 }

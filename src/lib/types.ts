@@ -81,6 +81,8 @@ export interface HistoryPage {
 export interface DiffLine {
   kind: 'add' | 'del' | 'context' | 'hunk'
   text: string
+  oldLine: number | null
+  newLine: number | null
 }
 
 /** The data boundary the whole app uses. Mock now; Tauri-invoke later. */

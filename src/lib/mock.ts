@@ -143,11 +143,11 @@ export const mock: LoreApi = {
   async getDiff(_repoPath: string, _path: string) {
     await delay(120)
     return [
-      { kind: 'hunk', text: '@@ -1,3 +1,4 @@' },
-      { kind: 'context', text: ' export const x = 1' },
-      { kind: 'del', text: '-const y = 2' },
-      { kind: 'add', text: '+const y = 3' },
-      { kind: 'add', text: '+const z = 4' },
+      { kind: 'hunk', text: '@@ -1,3 +1,4 @@', oldLine: null, newLine: null },
+      { kind: 'context', text: 'export const x = 1', oldLine: 1, newLine: 1 },
+      { kind: 'del', text: 'const y = 2', oldLine: 2, newLine: null },
+      { kind: 'add', text: 'const y = 3', oldLine: null, newLine: 2 },
+      { kind: 'add', text: 'const z = 4', oldLine: null, newLine: 3 },
     ] as DiffLine[]
   },
   async commitAll(repoPath: string, message: string) {
