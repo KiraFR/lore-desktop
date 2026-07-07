@@ -306,6 +306,17 @@ pub fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> R
     if cursor.is_some() && !page.commits.is_empty() {
         page.commits.remove(0);
     }
+    // Label commits that are a branch's tip with the branch name (e.g. "main",
+    // "feature/x") so a stacked branch's commits are distinguishable from the base.
+    // Best-effort: a branch-list failure just leaves the labels off.
+    if let Ok(branch_events) = run_lore(&["branch", "list", "--repository", &repo_path]) {
+        let tips = branch_tips_from(&branch_events);
+        for c in page.commits.iter_mut() {
+            if let Some(name) = tips.get(&c.id) {
+                c.head = Some(name.clone());
+            }
+        }
+    }
     Ok(page)
 }
 
@@ -490,6 +501,30 @@ fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
 pub fn lore_branches(repo_path: String) -> Result<Vec<BranchDto>, String> {
     let events = run_lore(&["branch", "list", "--repository", &repo_path])?;
     Ok(branches_from(&events))
+}
+
+/// Map each branch's local tip revision hash → branch name, from `branchListEntry`
+/// events. Only local tips are used since they align with the local revision
+/// history; archived branches are skipped. Used to label branch-head commits.
+fn branch_tips_from(events: &[LoreEvent]) -> std::collections::HashMap<String, String> {
+    let mut tips = std::collections::HashMap::new();
+    for d in events_with_tag(events, "branchListEntry") {
+        if d.get("location").and_then(|v| v.as_str()) != Some("local") {
+            continue;
+        }
+        if d.get("archived").map(json_truthy).unwrap_or(false) {
+            continue;
+        }
+        if let (Some(latest), Some(name)) = (
+            d.get("latest").and_then(|v| v.as_str()),
+            d.get("name").and_then(|v| v.as_str()),
+        ) {
+            if !zero_hash(latest) {
+                tips.insert(latest.to_string(), name.to_string());
+            }
+        }
+    }
+    tips
 }
 
 #[tauri::command]
@@ -681,6 +716,15 @@ mod branches_tests {
         assert!(branches[0].current);
         assert_eq!(branches[1].name, "feature/x");
         assert!(!branches[1].current);
+    }
+
+    #[test]
+    fn branch_tips_maps_local_latest_to_name() {
+        let events = parse_events(SAMPLE).unwrap();
+        let tips = branch_tips_from(&events);
+        // Only the local, non-archived tip: main@a1. Archived + remote-only excluded.
+        assert_eq!(tips.get("a1").map(String::as_str), Some("main"));
+        assert_eq!(tips.len(), 1);
     }
 }
 
