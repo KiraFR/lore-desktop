@@ -197,6 +197,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
     let mut commits: Vec<CommitDto> = Vec::new();
     let mut author_ids: Vec<String> = Vec::new();
     let mut when_ms: Vec<u64> = Vec::new();
+    let mut branch_ids: Vec<String> = Vec::new();
     for ev in events {
         match ev.tag_name.as_str() {
             "revisionHistoryEntry" => {
@@ -214,6 +215,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
                 });
                 author_ids.push(String::new());
                 when_ms.push(0);
+                branch_ids.push(String::new());
             }
             "metadata" => {
                 if let Some(i) = commits.len().checked_sub(1) {
@@ -223,6 +225,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
                             "message" => commits[i].message = metadata_value_string(value),
                             "created-by" => author_ids[i] = metadata_value_string(value),
                             "timestamp" => when_ms[i] = metadata_value_u64(value),
+                            "branch" => branch_ids[i] = metadata_value_string(value),
                             _ => {}
                         }
                     }
@@ -235,59 +238,35 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
         c.author = users.get(&author_ids[i]).cloned().unwrap_or_else(|| author_ids[i].clone());
         c.when = relative_time(when_ms[i]);
     }
-    assign_lanes(&mut commits);
+    assign_lanes_by_branch(&mut commits, &branch_ids);
 
     let next_cursor = commits.last().map(|c| c.id.clone());
     HistoryPage { commits, next_cursor }
 }
 
-/// Assign a graph lane (column) to each commit from its parent links. Commits are
-/// in display order (newest first). A commit takes the lane a child above reserved
-/// for it (or a fresh lane if it's a branch tip); its first parent continues that
-/// lane downward and any extra parents (a merge) open new lanes. This is the
-/// standard `git log --graph` layout the History SVG renders from `lane` + parents.
-/// Lanes are computed per page, so they are not guaranteed continuous across a
-/// pagination boundary (acceptable: linear history is all lane 0 regardless).
-fn assign_lanes(commits: &mut [CommitDto]) {
-    // active[l] = Some(id) → lane l is reserved for the commit with that id (a
-    // already-placed child points to it); None → the lane is free.
-    let mut active: Vec<Option<String>> = Vec::new();
-
-    fn take_free(active: &mut Vec<Option<String>>, id: &str) -> usize {
-        if let Some(l) = active.iter().position(|s| s.is_none()) {
-            active[l] = Some(id.to_string());
-            l
-        } else {
-            active.push(Some(id.to_string()));
-            active.len() - 1
-        }
-    }
-
-    for i in 0..commits.len() {
-        let id = commits[i].id.clone();
-        // The commit's lane = the leftmost lane reserved for it; free any duplicate
-        // reservations (converging branches merge into that leftmost lane).
-        let mut lane: Option<usize> = None;
-        for l in 0..active.len() {
-            if active[l].as_deref() == Some(id.as_str()) {
-                match lane {
-                    None => lane = Some(l),
-                    Some(_) => active[l] = None,
-                }
+/// Assign a graph lane (column) to each commit **by its branch**, so a branch's
+/// commits sit on their own lane and visibly fork from their base — even when the
+/// history is topologically linear (Lore branches are linear stacks). Commits are
+/// in display order (newest first); we scan oldest→newest so the trunk (the base
+/// branch of the oldest commit) takes lane 0 and each stacked/merged branch that
+/// appears gets the next lane. The History SVG renders the fork/rejoin edges from
+/// each commit's `lane` and its parents. Lanes are per page (not continuous across
+/// a pagination boundary).
+fn assign_lanes_by_branch(commits: &mut [CommitDto], branch_ids: &[String]) {
+    let mut lane_of: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut next: u64 = 0;
+    for i in (0..commits.len()).rev() {
+        let branch = branch_ids.get(i).cloned().unwrap_or_default();
+        let lane = match lane_of.get(&branch) {
+            Some(&l) => l,
+            None => {
+                let l = next;
+                next += 1;
+                lane_of.insert(branch, l);
+                l
             }
-        }
-        let lane = lane.unwrap_or_else(|| take_free(&mut active, &id));
-        commits[i].lane = lane as u64;
-
-        // The first parent continues this lane; extra parents open new lanes
-        // (reusing an existing reservation for a shared parent).
-        let parents = commits[i].parents.clone();
-        active[lane] = parents.first().cloned();
-        for p in parents.iter().skip(1) {
-            if !active.iter().any(|s| s.as_deref() == Some(p.as_str())) {
-                take_free(&mut active, p);
-            }
-        }
+        };
+        commits[i].lane = lane;
     }
 }
 
@@ -814,29 +793,31 @@ mod history_tests {
         assert_eq!(page.commits[0].parents.len(), 1); // rev 2 → one real parent (rev 1)
         assert!(page.commits[1].parents.is_empty());   // rev 1 is the root
         assert!(page.next_cursor.is_some());
-        // Linear history → every commit stays on lane 0.
+        // Single-branch history → every commit stays on lane 0.
         assert!(page.commits.iter().all(|c| c.lane == 0));
     }
 
-    // Synthetic DAG:  c0 (merge of c1, c2) → c1 → c3 ; c2 → c3 ; c3 root.
-    const MERGE_DAG: &str = concat!(
-        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"c0","revisionNumber":4,"parent":["c1","c2"]}}"#, "\n",
-        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"c1","revisionNumber":3,"parent":["c3","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
-        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"c2","revisionNumber":2,"parent":["c3","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
-        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"c3","revisionNumber":1,"parent":["0000000000000000000000000000000000000000000000000000000000000000","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
+    // A `feature` commit (rev3) stacked on `main` (rev2, rev1). Newest first.
+    const STACKED: &str = concat!(
+        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"r3","revisionNumber":3,"parent":["r2","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
+        r#"{"tagName":"metadata","data":{"key":"branch","value":{"tagName":"context","data":"feature"}}}"#, "\n",
+        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"r2","revisionNumber":2,"parent":["r1","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
+        r#"{"tagName":"metadata","data":{"key":"branch","value":{"tagName":"context","data":"main"}}}"#, "\n",
+        r#"{"tagName":"revisionHistoryEntry","data":{"revision":"r1","revisionNumber":1,"parent":["0000000000000000000000000000000000000000000000000000000000000000","0000000000000000000000000000000000000000000000000000000000000000"]}}"#, "\n",
+        r#"{"tagName":"metadata","data":{"key":"branch","value":{"tagName":"context","data":"main"}}}"#, "\n",
         r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
     );
 
     #[test]
-    fn assigns_lanes_for_a_merge() {
-        let events = parse_events(MERGE_DAG).unwrap();
+    fn stacked_branch_gets_its_own_lane() {
+        let events = parse_events(STACKED).unwrap();
         let page = history_from(&events);
         let lane = |id: &str| page.commits.iter().find(|c| c.id == id).unwrap().lane;
-        // c0/c1/c3 on the mainline lane 0; the feature-side c2 gets its own lane 1.
-        assert_eq!(lane("c0"), 0);
-        assert_eq!(lane("c1"), 0);
-        assert_eq!(lane("c2"), 1);
-        assert_eq!(lane("c3"), 0);
+        // The base `main` is the trunk on lane 0; the stacked `feature` commit
+        // takes lane 1 so it forks visibly from main even without a merge.
+        assert_eq!(lane("r1"), 0);
+        assert_eq!(lane("r2"), 0);
+        assert_eq!(lane("r3"), 1);
     }
 }
 
