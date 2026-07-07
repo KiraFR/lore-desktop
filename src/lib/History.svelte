@@ -136,7 +136,9 @@
     let h = 0; for (let i = 0; i < name.length; i++) h += name.charCodeAt(i)
     return { initials, ...PALETTE[h % PALETTE.length] }
   }
-  const who = (name: string) => (name === 'you' ? 'you' : name)
+  // Compact author label for inline text: the local part of an email (the full
+  // address shows in the avatar's hover tooltip). 'you' stays 'you'.
+  const shortName = (name: string) => (name === 'you' ? 'you' : name.includes('@') ? name.split('@')[0] : name)
 
   function onScroll() {
     if (!glistEl) return
@@ -171,8 +173,8 @@
                  onclick={() => (selectedId = c.id)}
                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedId = c.id } }}>
               {#if c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
-              <span class="ava" style="background:{av.bg};color:{av.fg}">{av.initials}</span>
-              <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub">{who(c.author)} · {c.when}</span></span>
+              <span class="ava" style="background:{av.bg};color:{av.fg}" title={c.author}>{av.initials}</span>
+              <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub">{shortName(c.author)} · {c.when}</span></span>
               <span class="counts">{#if c.adds}<span class="a">+{c.adds}</span>{/if}{#if c.mods}<span class="m">~{c.mods}</span>{/if}{#if c.dels}<span class="d">−{c.dels}</span>{/if}</span>
             </div>
           {/each}
@@ -185,8 +187,8 @@
     {#if selected}
       {@const av = avatar(selected.author)}
       <header class="dh">
-        <span class="ava lg" style="background:{av.bg};color:{av.fg}">{av.initials}</span>
-        <div><div class="dwho">{who(selected.author)}</div><div class="rev">{selected.when} · #{selected.rev} · {selected.id}</div></div>
+        <span class="ava lg" style="background:{av.bg};color:{av.fg}" title={selected.author}>{av.initials}</span>
+        <div><div class="dwho">{shortName(selected.author)}</div><div class="rev">{selected.when} · #{selected.rev} · {selected.id}</div></div>
       </header>
       <p class="dmsg">{selected.message}</p>
       <div class="fchg">
