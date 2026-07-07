@@ -103,6 +103,8 @@ export interface LoreApi {
   pushedLockFiles(repoPath: string): Promise<string[]>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
   getHistory(repoPath: string, length: number, cursor?: string): Promise<HistoryPage>
+  /** Files changed by a single commit (diff vs its first parent); fetched lazily on select. */
+  getCommitFiles(repoPath: string, revision: string, parent: string): Promise<CommitFile[]>
   getBranches(repoPath: string): Promise<Branch[]>
   switchBranch(repoPath: string, name: string): Promise<void>
   createBranch(repoPath: string, name: string, basedOn: string): Promise<void>

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, DiffLine, HistoryPage, LockEntry, LoreApi, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, LockEntry, LoreApi, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -13,6 +13,8 @@ export const tauriApi: LoreApi = {
   getDiff: (repoPath, path) => invoke<DiffLine[]>('lore_diff', { repoPath, path }),
   getHistory: (repoPath, length, cursor) =>
     invoke<HistoryPage>('lore_history', { repoPath, length, cursor: cursor ?? null }),
+  getCommitFiles: (repoPath, revision, parent) =>
+    invoke<CommitFile[]>('lore_commit_files', { repoPath, revision, parent }),
   pickFolder: async () => {
     const picked = await open({ directory: true, multiple: false })
     return typeof picked === 'string' ? picked : null

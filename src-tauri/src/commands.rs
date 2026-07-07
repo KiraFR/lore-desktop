@@ -566,6 +566,66 @@ pub fn lore_pushed_lock_files(repo_path: String) -> Result<Vec<String>, String> 
     Ok(mine.into_iter().filter(|p| pushed.contains(p)).collect())
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFileDto {
+    pub path: String,
+    pub action: String, // "add" | "modify" | "delete" | "move" | "copy"
+}
+
+/// Map `fileDiff` events (`{ path, action }`) onto the UI's per-commit file list.
+fn commit_files_from(events: &[LoreEvent]) -> Vec<CommitFileDto> {
+    events_with_tag(events, "fileDiff")
+        .into_iter()
+        .map(|d| CommitFileDto {
+            path: d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            action: d.get("action").map(map_action).unwrap_or_else(|| "modify".into()),
+        })
+        .collect()
+}
+
+/// The files a single commit changed = the diff between the commit and its first
+/// parent. Fetched lazily when a commit is selected in History (one diff per
+/// click, never eagerly for every row). A root commit (no parent) has no diff
+/// base, so it returns an empty list.
+#[tauri::command]
+pub fn lore_commit_files(
+    repo_path: String,
+    revision: String,
+    parent: String,
+) -> Result<Vec<CommitFileDto>, String> {
+    if is_zero_revision(&parent) {
+        return Ok(vec![]);
+    }
+    let events = run_lore(&[
+        "diff", "--source", &parent, "--target", &revision, "--repository", &repo_path,
+    ])?;
+    Ok(commit_files_from(&events))
+}
+
+#[cfg(test)]
+mod commit_files_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const DIFF: &str = concat!(
+        r#"{"tagName":"fileDiff","data":{"path":"notes.txt","patch":"@@","action":"keep"}}"#, "\n",
+        r#"{"tagName":"fileDiff","data":{"path":"new.rs","patch":"@@","action":"add"}}"#, "\n",
+        r#"{"tagName":"fileDiff","data":{"path":"gone.rs","patch":"@@","action":"delete"}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn maps_file_actions() {
+        let events = parse_events(DIFF).unwrap();
+        let files = commit_files_from(&events);
+        assert_eq!(files.len(), 3);
+        assert_eq!(files[0], CommitFileDto { path: "notes.txt".into(), action: "modify".into() });
+        assert_eq!(files[1].action, "add");
+        assert_eq!(files[2].action, "delete");
+    }
+}
+
 #[cfg(test)]
 mod pushed_lock_tests {
     use super::*;

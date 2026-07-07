@@ -2,7 +2,7 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo } from './repo.svelte'
-  import type { Commit } from './types'
+  import type { Commit, CommitFile } from './types'
 
   let commits = $state<Commit[]>([])
   let selectedId = $state<string | null>(null)
@@ -13,6 +13,35 @@
   let viewH = $state(560)
 
   const selected = $derived(commits.find((c) => c.id === selectedId) ?? null)
+
+  // A commit's files are fetched lazily on select (one diff vs its first parent),
+  // never eagerly for every row. A same-commit refetch updates in place.
+  let detailFiles = $state<CommitFile[]>([])
+  let detailLoading = $state(false)
+  let detailError = $state(false)
+  let lastDetailId = ''
+
+  $effect(() => {
+    const c = selected
+    const repoPath = session.config.currentRepo
+    if (!c || !repoPath) { detailFiles = []; detailLoading = false; detailError = false; lastDetailId = ''; return }
+    const sameId = c.id === lastDetailId
+    lastDetailId = c.id
+    if (!sameId) { detailLoading = true; detailFiles = [] }
+    detailError = false
+    const parent = c.parents[0] ?? ''
+    api
+      .getCommitFiles(repoPath, c.id, parent)
+      .then((files) => { if (selected?.id === c.id) detailFiles = files })
+      .catch(() => { if (selected?.id === c.id) detailError = true })
+      .finally(() => { if (selected?.id === c.id) detailLoading = false })
+  })
+
+  const detailCounts = $derived({
+    adds: detailFiles.filter((f) => f.action === 'add').length,
+    mods: detailFiles.filter((f) => f.action === 'modify' || f.action === 'move' || f.action === 'copy').length,
+    dels: detailFiles.filter((f) => f.action === 'delete').length,
+  })
 
   const PAGE = 200
   let nextCursor = $state<string | null | undefined>(undefined) // undefined = not loaded, null = end
@@ -161,14 +190,22 @@
       </header>
       <p class="dmsg">{selected.message}</p>
       <div class="fchg">
-        Files changed · {selected.files.length} {selected.files.length === 1 ? 'file' : 'files'}
-        <span class="counts">{#if selected.adds}<span class="a">+{selected.adds}</span>{/if}{#if selected.mods}<span class="m">~{selected.mods}</span>{/if}{#if selected.dels}<span class="d">−{selected.dels}</span>{/if}</span>
+        Files changed · {detailFiles.length} {detailFiles.length === 1 ? 'file' : 'files'}
+        <span class="counts">{#if detailCounts.adds}<span class="a">+{detailCounts.adds}</span>{/if}{#if detailCounts.mods}<span class="m">~{detailCounts.mods}</span>{/if}{#if detailCounts.dels}<span class="d">−{detailCounts.dels}</span>{/if}</span>
       </div>
-      <ul class="fl">
-        {#each selected.files as f (f.path)}
-          <li><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span><span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
-        {/each}
-      </ul>
+      {#if detailLoading}
+        <p class="floading muted">Loading files…</p>
+      {:else if detailError}
+        <p class="floading muted">Couldn't load files.</p>
+      {:else if detailFiles.length === 0}
+        <p class="floading muted">No file changes.</p>
+      {:else}
+        <ul class="fl">
+          {#each detailFiles as f (f.path)}
+            <li><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span><span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
+          {/each}
+        </ul>
+      {/if}
     {:else}
       <div class="empty muted"><p>Select a commit.</p></div>
     {/if}
@@ -201,6 +238,7 @@
   .rev { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
   .dmsg { font-size: 13.5px; margin: 0 0 14px; }
   .fchg { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
+  .floading { font-size: 12.5px; padding: 6px 0; }
   .fl { list-style: none; margin: 0; padding: 0; }
   .fl li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }

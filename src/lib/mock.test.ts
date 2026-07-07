@@ -68,6 +68,14 @@ describe('mock api', () => {
     expect(branches.filter((b) => b.current)).toHaveLength(1)
   })
 
+  it('getCommitFiles returns a commit’s files', async () => {
+    const page = await mock.getHistory('game-main', 5)
+    const files = await mock.getCommitFiles('game-main', page.commits[0].id, page.commits[0].parents[0] ?? '')
+    expect(files.length).toBeGreaterThan(0)
+    expect(files[0]).toHaveProperty('path')
+    expect(files[0]).toHaveProperty('action')
+  })
+
   it('pushedLockFiles returns the paths I hold locked', async () => {
     const files = await mock.pushedLockFiles('C:/repos/game')
     expect(Array.isArray(files)).toBe(true)

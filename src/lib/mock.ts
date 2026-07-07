@@ -188,6 +188,10 @@ export const mock: LoreApi = {
     const nextIndex = start + length
     return { commits, nextCursor: nextIndex < BIG_HISTORY.length ? commits[commits.length - 1].id : null }
   },
+  async getCommitFiles(_repoPath: string, revision: string, _parent: string) {
+    await delay(160)
+    return (BIG_HISTORY.find((c) => c.id === revision)?.files ?? []).map((f) => ({ ...f }))
+  },
   async getBranches(_repoPath: string) {
     await delay(200)
     return branchList.map((b) => ({ ...b }))
