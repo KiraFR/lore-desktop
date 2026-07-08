@@ -1,18 +1,19 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { repo } from './repo.svelte'
-  import type { Commit, CommitFile } from './types'
+  import { repo, history, refreshHistory, loadMoreHistory } from './repo.svelte'
+  import type { CommitFile } from './types'
 
-  let commits = $state<Commit[]>([])
-  let selectedId = $state<string | null>(null)
-  let loading = $state(true)
+  // Commits + selection live in the shared `history` store so leaving and
+  // re-entering the History view keeps them (no remount reload / loading flash).
+  const commits = $derived(history.commits)
 
   let glistEl = $state<HTMLDivElement>()
   let scrollTop = $state(0)
   let viewH = $state(560)
 
-  const selected = $derived(commits.find((c) => c.id === selectedId) ?? null)
+  const selected = $derived(commits.find((c) => c.id === history.selectedId) ?? null)
+  const loading = $derived(!history.loaded && commits.length === 0)
 
   // A commit's files are fetched lazily on select (one diff vs its first parent),
   // never eagerly for every row. A same-commit refetch updates in place.
@@ -43,33 +44,9 @@
     dels: detailFiles.filter((f) => f.action === 'delete').length,
   })
 
-  const PAGE = 200
-  let nextCursor = $state<string | null | undefined>(undefined) // undefined = not loaded, null = end
-  let loadingMore = $state(false)
-
-  $effect(() => {
-    const repoPath = session.config.currentRepo
-    if (!repoPath) return
-    loading = true
-    commits = []
-    api.getHistory(repoPath, PAGE).then((page) => {
-      commits = page.commits
-      nextCursor = page.nextCursor
-      if (page.commits.length && (selectedId === null || !page.commits.some((c) => c.id === selectedId)))
-        selectedId = page.commits[0].id
-      loading = false
-    })
-  })
-
-  async function loadMore() {
-    const repoPath = session.config.currentRepo
-    if (!repoPath || loadingMore || !nextCursor) return
-    loadingMore = true
-    const page = await api.getHistory(repoPath, PAGE, nextCursor)
-    commits = [...commits, ...page.commits]
-    nextCursor = page.nextCursor
-    loadingMore = false
-  }
+  // On entering the view, refresh in the background: cached commits stay visible
+  // (no blank), and the first-ever load shows the loading state via `loading`.
+  $effect(() => { refreshHistory() })
 
   // Track the scroll viewport height so the window covers exactly what's visible.
   $effect(() => {
@@ -143,7 +120,7 @@
   function onScroll() {
     if (!glistEl) return
     scrollTop = glistEl.scrollTop
-    if (glistEl.scrollTop + glistEl.clientHeight > commits.length * ROW_H - viewH * 2) loadMore()
+    if (glistEl.scrollTop + glistEl.clientHeight > commits.length * ROW_H - viewH * 2) loadMoreHistory()
   }
 </script>
 
@@ -168,10 +145,10 @@
           {#each windowCommits as c, k (c.id)}
             {@const i = first + k}
             {@const av = avatar(c.author)}
-            <div class="grow" class:sel={c.id === selectedId} role="button" tabindex="0"
+            <div class="grow" class:sel={c.id === history.selectedId} role="button" tabindex="0"
                  style="top:{i * ROW_H}px; height:{ROW_H}px; padding-left:{graphWidth + 10}px"
-                 onclick={() => (selectedId = c.id)}
-                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedId = c.id } }}>
+                 onclick={() => (history.selectedId = c.id)}
+                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); history.selectedId = c.id } }}>
               {#if c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
               <span class="ava" style="background:{av.bg};color:{av.fg}" title={c.author}>{av.initials}</span>
               <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub">{shortName(c.author)} · {c.when}</span></span>

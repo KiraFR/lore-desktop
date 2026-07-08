@@ -1,7 +1,9 @@
 import { api } from './api'
 import { session } from './session.svelte'
 import { toastError, toastAction } from './toast'
-import type { Branch, LockEntry, StatusResult } from './types'
+import type { Branch, Commit, LockEntry, StatusResult } from './types'
+
+const HISTORY_PAGE = 200
 
 // The current repository's status + in-flight action, shared by the title bar
 // (branch, ahead/behind, sync, push) and the Changes view (files, commit).
@@ -15,6 +17,45 @@ export const locks = $state({ list: [] as LockEntry[] })
 // Branches are shared so `refreshStatus` can keep them warm — a `sync` may pull new
 // remote branches, and a window-focus refresh picks up branches created elsewhere.
 export const branches = $state({ list: [] as Branch[] })
+
+// History is shared so switching views doesn't remount + reload it. Re-entering
+// History shows the cached commits immediately and refreshes in the background;
+// a commit/push/sync refreshes it without blanking the view.
+export const history = $state({
+  commits: [] as Commit[],
+  cursor: undefined as string | null | undefined, // undefined = not loaded, null = end
+  selectedId: null as string | null,
+  loaded: false,
+  repoPath: null as string | null,
+})
+
+export async function refreshHistory(silent = false) {
+  const path = session.config.currentRepo
+  if (!path) {
+    Object.assign(history, { commits: [], cursor: undefined, selectedId: null, loaded: false, repoPath: null })
+    return
+  }
+  if (history.repoPath !== path) {
+    // New repo → drop the stale history so the loading state shows for the first load.
+    Object.assign(history, { commits: [], cursor: undefined, selectedId: null, loaded: false, repoPath: path })
+  }
+  try {
+    const page = await api.getHistory(path, HISTORY_PAGE)
+    history.commits = page.commits
+    history.cursor = page.nextCursor
+    if (page.commits.length && (history.selectedId === null || !page.commits.some((c) => c.id === history.selectedId)))
+      history.selectedId = page.commits[0].id
+    history.loaded = true
+  } catch (e) { if (!silent) toastError("Couldn't load history", e) }
+}
+
+export async function loadMoreHistory() {
+  const path = session.config.currentRepo
+  if (!path || !history.cursor) return
+  const page = await api.getHistory(path, HISTORY_PAGE, history.cursor)
+  history.commits = [...history.commits, ...page.commits]
+  history.cursor = page.nextCursor
+}
 
 export async function refreshLocks() {
   const path = session.config.currentRepo
@@ -65,6 +106,9 @@ async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Prom
     return
   }
   await refreshStatus()
+  // commit/push/sync all change the history — refresh it in the background
+  // (cached commits stay visible, no loading screen).
+  refreshHistory(true)
 }
 
 export const commit = (message: string, exclude: string[] = []) =>
