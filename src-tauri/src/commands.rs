@@ -384,6 +384,78 @@ pub fn lore_discard_file(repo_path: String, path: String) -> Result<(), String> 
     Ok(())
 }
 
+/// A short-lived, unique scratch dir for backing up files during an undo.
+fn undo_backup_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("lore-undo-{}-{}", std::process::id(), nanos))
+}
+
+/// Undo the last local commit and return its changes to the pending set.
+///
+/// Lore's `branch reset` is HARD (it syncs the working tree to the target), so it
+/// alone would discard the commit's changes. To keep them, we: (1) list the commit's
+/// files (diff `parent` → working tree, which still holds the committed content),
+/// (2) back up the added/modified files, (3) reset the branch to `parent`, then
+/// (4) re-apply — restore added/modified files, re-delete files the commit deleted.
+/// The result: the branch tip moves back and the changes reappear as pending.
+/// Caller must ensure the working tree is otherwise clean (== the tip).
+#[tauri::command]
+pub fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<(), String> {
+    use std::fs;
+    let repo = std::path::Path::new(&repo_path);
+
+    // 1. The commit's files (working tree still == the tip here).
+    let diff_events = run_lore(&["diff", "--source", &parent_revision, "--repository", &repo_path])?;
+    let files = commit_files_from(&diff_events);
+
+    // 2. Back up the content of added/modified files (their on-disk = committed version).
+    let backup = undo_backup_dir();
+    for f in &files {
+        if f.action == "delete" {
+            continue; // nothing to back up — the file is already gone on disk
+        }
+        let src = repo.join(&f.path);
+        if !src.exists() {
+            continue;
+        }
+        let dst = backup.join(&f.path);
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("backup mkdir failed: {e}"))?;
+        }
+        fs::copy(&src, &dst).map_err(|e| format!("backup copy failed for {}: {e}", f.path))?;
+    }
+
+    // 3. Hard reset the branch to the parent (working tree reverts to parent).
+    if let Err(e) = run_lore(&["branch", "reset", &parent_revision, "--repository", &repo_path]) {
+        let _ = fs::remove_dir_all(&backup); // nothing mutated on disk yet
+        return Err(e);
+    }
+
+    // 4. Re-apply the changes as pending: restore added/modified, re-delete deleted.
+    for f in &files {
+        let target = repo.join(&f.path);
+        if f.action == "delete" {
+            let _ = fs::remove_file(&target);
+            continue;
+        }
+        let src = backup.join(&f.path);
+        if !src.exists() {
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("restore mkdir failed: {e}"))?;
+        }
+        // On restore failure, keep the backup dir so nothing is lost.
+        fs::copy(&src, &target).map_err(|e| format!("restore failed for {} (backup kept at {}): {e}", f.path, backup.display()))?;
+    }
+
+    let _ = fs::remove_dir_all(&backup);
+    Ok(())
+}
+
 
 /// Plain `lore sync` — pulls/merges the remote into the local branch
 /// non-destructively (NO `--reset`, which would discard local modifications).

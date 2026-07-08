@@ -105,6 +105,8 @@ export interface LoreApi {
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
   /** Discard a file's working changes, restoring the committed version. */
   discardFile(repoPath: string, path: string): Promise<void>
+  /** Undo the last local commit — its changes return to the pending set. */
+  undoCommit(repoPath: string, parentRevision: string): Promise<void>
   getHistory(repoPath: string, length: number, cursor?: string): Promise<HistoryPage>
   /** Files changed by a single commit (diff vs its first parent); fetched lazily on select. */
   getCommitFiles(repoPath: string, revision: string, parent: string): Promise<CommitFile[]>

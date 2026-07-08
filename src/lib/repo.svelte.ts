@@ -158,3 +158,14 @@ export async function discardFile(path: string) {
   catch (e) { toastError('Discard failed', e); return }
   await refreshStatus()
 }
+
+// Undo the last local commit: the tip moves back to `parentRevision` and the
+// commit's changes return to the pending set (Changes).
+export async function undoCommit(parentRevision: string) {
+  const p = session.config.currentRepo
+  if (!p) return
+  try { await api.undoCommit(p, parentRevision) }
+  catch (e) { toastError('Undo failed', e); return }
+  await refreshStatus()
+  await refreshHistory(true)
+}

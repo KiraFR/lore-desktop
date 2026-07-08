@@ -29,6 +29,7 @@ export const tauriApi: LoreApi = {
   pushedLockFiles: (repoPath) => invoke<string[]>('lore_pushed_lock_files', { repoPath }),
   setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
   discardFile: (repoPath, path) => invoke<void>('lore_discard_file', { repoPath, path }),
+  undoCommit: (repoPath, parentRevision) => invoke<void>('lore_undo_commit', { repoPath, parentRevision }),
   getLocks: (repoPath) => invoke<LockEntry[]>('lore_locks', { repoPath }),
   getBranches: (repoPath) => invoke<Branch[]>('lore_branches', { repoPath }),
   previewMerge: (repoPath, source) => invoke<MergePreview>('lore_merge_preview', { repoPath, source }),

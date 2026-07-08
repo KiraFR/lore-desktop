@@ -1,7 +1,9 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { repo, history, refreshHistory, loadMoreHistory } from './repo.svelte'
+  import { repo, history, refreshHistory, loadMoreHistory, undoCommit } from './repo.svelte'
+  import { confirmAction } from './confirm'
+  import Icon from './Icon.svelte'
   import type { CommitFile } from './types'
 
   // Commits + selection live in the shared `history` store so leaving and
@@ -43,6 +45,23 @@
     mods: detailFiles.filter((f) => f.action === 'modify' || f.action === 'move' || f.action === 'copy').length,
     dels: detailFiles.filter((f) => f.action === 'delete').length,
   })
+
+  // The last local (unpushed) commit can be undone — but only with a clean working
+  // tree (no other pending changes), so the undo captures exactly the commit.
+  const canUndo = $derived(
+    !!selected && selected.id === history.commits[0]?.id &&
+    (repo.status?.localAhead ?? 0) > 0 && selected.parents.length > 0 &&
+    (repo.status?.files.length ?? 0) === 0,
+  )
+
+  async function doUndo() {
+    if (!selected || !canUndo) return
+    const ok = await confirmAction(
+      `Undo the commit "${selected.message}"? Its changes go back to Changes (nothing is lost).`,
+      'Undo commit',
+    )
+    if (ok) undoCommit(selected.parents[0])
+  }
 
   // On entering the view, refresh in the background: cached commits stay visible
   // (no blank), and the first-ever load shows the loading state via `loading`.
@@ -166,6 +185,11 @@
       <header class="dh">
         <span class="ava lg" style="background:{av.bg};color:{av.fg}" title={selected.author}>{av.initials}</span>
         <div><div class="dwho">{shortName(selected.author)}</div><div class="rev">{selected.when} · #{selected.rev} · {selected.id}</div></div>
+        {#if canUndo}
+          <button class="undo" onclick={doUndo} disabled={!!repo.busy} title="Undo this commit — its changes go back to Changes">
+            <Icon name="history" size={13} /> Undo commit
+          </button>
+        {/if}
       </header>
       <p class="dmsg">{selected.message}</p>
       <div class="fchg">
@@ -215,6 +239,7 @@
   .dh { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
   .dwho { font-size: 13px; font-weight: 500; }
   .rev { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .undo { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11.5px; flex-shrink: 0; }
   .dmsg { font-size: 13.5px; margin: 0 0 14px; }
   .fchg { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
   .floading { font-size: 12.5px; padding: 6px 0; }

@@ -190,6 +190,14 @@ export const mock: LoreApi = {
     const s = stateFor(repoPath)
     s.files = s.files.filter((f) => f.path !== path)
   },
+  async undoCommit(repoPath: string, _parentRevision: string) {
+    await delay(400)
+    const s = stateFor(repoPath)
+    if (s.localAhead > 0) s.localAhead -= 1
+    // The undone commit's change reappears as pending.
+    if (!s.files.some((f) => f.path === 'Source/Player/Undone.cpp'))
+      s.files = [{ path: 'Source/Player/Undone.cpp', action: 'modify', isBinary: false, size: 1024 }, ...s.files]
+  },
   async getHistory(_repoPath: string, length: number, cursor?: string) {
     await delay(280)
     const start = cursor ? BIG_HISTORY.findIndex((c) => c.id === cursor) + 1 : 0

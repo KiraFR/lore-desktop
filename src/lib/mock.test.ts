@@ -46,6 +46,16 @@ describe('mock api', () => {
     expect(after.files.some((f) => f.path === path)).toBe(false)
   })
 
+  it('undoCommit lowers ahead and brings changes back to pending', async () => {
+    await mock.commitAll('C:/repos/u', 'c', [])
+    const committed = await mock.getStatus('C:/repos/u')
+    expect(committed.localAhead).toBeGreaterThan(0)
+    await mock.undoCommit('C:/repos/u', 'parent-rev')
+    const after = await mock.getStatus('C:/repos/u')
+    expect(after.localAhead).toBe(committed.localAhead - 1)
+    expect(after.files.length).toBeGreaterThan(0)
+  })
+
   it('selective commit keeps excluded files pending', async () => {
     const before = await mock.getStatus('C:/repos/x')
     const keep = before.files[0].path
