@@ -44,6 +44,7 @@ pub fn run() {
         commands::lore_merge_resolve,
         commands::lore_merge_commit,
         commands::lore_merge_abort,
+        commands::lore_discard_file,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

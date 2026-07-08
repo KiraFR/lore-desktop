@@ -185,6 +185,11 @@ export const mock: LoreApi = {
     await delay(150)
     return lockList.map((l) => ({ ...l }))
   },
+  async discardFile(repoPath: string, path: string) {
+    await delay(200)
+    const s = stateFor(repoPath)
+    s.files = s.files.filter((f) => f.path !== path)
+  },
   async getHistory(_repoPath: string, length: number, cursor?: string) {
     await delay(280)
     const start = cursor ? BIG_HISTORY.findIndex((c) => c.id === cursor) + 1 : 0

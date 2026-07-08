@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { ChangedFile, DiffLine } from './types'
-  import { repo, setLock } from './repo.svelte'
+  import { repo, setLock, discardFile } from './repo.svelte'
   import { session } from './session.svelte'
   import { api } from './api'
+  import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
 
   let { file }: { file: ChangedFile | null } = $props()
+
+  async function doDiscard(f: ChangedFile) {
+    const ok = await confirmAction(`Discard changes to ${f.path}? This can't be undone.`, 'Discard changes')
+    if (ok) discardFile(f.path)
+  }
 
   let diff = $state<DiffLine[]>([])
   let diffLoading = $state(false)
@@ -73,6 +79,9 @@
           <div class="fp muted">{dirName(file.path)}</div>
         </div>
         <span class="badge {badge.c}">{badge.t}</span>
+        <button class="discard" onclick={() => doDiscard(file)} disabled={!!repo.busy} title="Discard changes to this file">
+          <Icon name="history" size={13} /> Discard
+        </button>
       </header>
 
       {#if file.isBinary}
@@ -146,6 +155,8 @@
   .badge.modified { background: var(--warn-bg); color: var(--warn-text); }
   .badge.added { background: rgba(63, 185, 80, .15); color: var(--added); }
   .badge.deleted { background: rgba(248, 81, 73, .15); color: var(--deleted); }
+  .discard { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+  .discard:hover:not(:disabled) { color: var(--deleted); border-color: var(--deleted); }
   .cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
   figure { margin: 0; }
   .thumb { height: 150px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); }

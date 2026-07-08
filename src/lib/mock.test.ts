@@ -38,6 +38,14 @@ describe('mock api', () => {
     expect(afterPush.localAhead).toBe(0)
   })
 
+  it('discardFile removes the file from changes', async () => {
+    const before = await mock.getStatus('C:/repos/d')
+    const path = before.files[0].path
+    await mock.discardFile('C:/repos/d', path)
+    const after = await mock.getStatus('C:/repos/d')
+    expect(after.files.some((f) => f.path === path)).toBe(false)
+  })
+
   it('selective commit keeps excluded files pending', async () => {
     const before = await mock.getStatus('C:/repos/x')
     const keep = before.files[0].path

@@ -374,6 +374,17 @@ pub fn lore_push(repo_path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Discard a file's working changes, restoring the committed version. `lore reset`
+/// resolves a relative path against the process cwd, so pass an absolute path.
+#[tauri::command]
+pub fn lore_discard_file(repo_path: String, path: String) -> Result<(), String> {
+    let abs = std::path::Path::new(&repo_path).join(&path);
+    let abs_str = abs.to_string_lossy();
+    run_lore(&["reset", &abs_str, "--repository", &repo_path])?;
+    Ok(())
+}
+
+
 /// Plain `lore sync` — pulls/merges the remote into the local branch
 /// non-destructively (NO `--reset`, which would discard local modifications).
 #[tauri::command]

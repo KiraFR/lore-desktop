@@ -150,3 +150,11 @@ export async function setLock(path: string, lock: boolean) {
   await refreshStatus()
   await refreshLocks()
 }
+
+export async function discardFile(path: string) {
+  const p = session.config.currentRepo
+  if (!p) return
+  try { await api.discardFile(p, path) }
+  catch (e) { toastError('Discard failed', e); return }
+  await refreshStatus()
+}
