@@ -29,13 +29,21 @@ describe('mock api', () => {
   it('commit clears files and bumps ahead; push zeroes ahead', async () => {
     const before = await mock.getStatus('C:/repos/game')
     expect(before.files.length).toBeGreaterThan(0)
-    await mock.commitAll('C:/repos/game', 'my commit')
+    await mock.commitAll('C:/repos/game', 'my commit', [])
     const afterCommit = await mock.getStatus('C:/repos/game')
     expect(afterCommit.files.length).toBe(0)
     expect(afterCommit.localAhead).toBe(before.localAhead + 1)
     await mock.push('C:/repos/game')
     const afterPush = await mock.getStatus('C:/repos/game')
     expect(afterPush.localAhead).toBe(0)
+  })
+
+  it('selective commit keeps excluded files pending', async () => {
+    const before = await mock.getStatus('C:/repos/x')
+    const keep = before.files[0].path
+    await mock.commitAll('C:/repos/x', 'partial', [keep])
+    const after = await mock.getStatus('C:/repos/x')
+    expect(after.files.map((f) => f.path)).toEqual([keep])
   })
 
   it('persists config to localStorage', async () => {

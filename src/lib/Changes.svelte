@@ -29,7 +29,11 @@
     staged = next
   }
 
-  async function doCommit() { await commit(message); message = '' }
+  async function doCommit() {
+    const exclude = files.filter((f) => !staged.has(f.path)).map((f) => f.path)
+    await commit(message, exclude)
+    message = ''
+  }
 </script>
 
 <section class="changes">

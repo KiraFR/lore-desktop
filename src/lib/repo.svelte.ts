@@ -67,7 +67,8 @@ async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Prom
   await refreshStatus()
 }
 
-export const commit = (message: string) => act('commit', (p) => api.commitAll(p, message))
+export const commit = (message: string, exclude: string[] = []) =>
+  act('commit', (p) => api.commitAll(p, message, exclude))
 export const sync = () => act('sync', (p) => api.sync(p))
 
 // Push, then offer to release the locks the user held on files that were part of

@@ -153,11 +153,12 @@ export const mock: LoreApi = {
       { kind: 'add', text: 'const z = 4', oldLine: null, newLine: 3 },
     ] as DiffLine[]
   },
-  async commitAll(repoPath: string, message: string) {
+  async commitAll(repoPath: string, message: string, exclude: string[] = []) {
     if (!message.trim()) throw new Error('commit message is required')
     await delay(500)
     const s = stateFor(repoPath)
-    s.files = []
+    // Unchecked (excluded) files stay pending; the rest are committed away.
+    s.files = s.files.filter((f) => exclude.includes(f.path))
     s.localAhead += 1
   },
   async push(repoPath: string) {

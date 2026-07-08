@@ -350,11 +350,20 @@ fn lock_subcommand(lock: bool) -> &'static str {
 /// Stage the whole working tree then commit it. Selective staging is a follow-up;
 /// this commits everything, matching the current UI (checkboxes are decorative).
 #[tauri::command]
-pub fn lore_commit(repo_path: String, message: String) -> Result<(), String> {
+pub fn lore_commit(repo_path: String, message: String, exclude: Vec<String>) -> Result<(), String> {
     if message.trim().is_empty() {
         return Err("commit message is required".to_string());
     }
+    // Stage everything (incl. deletions), then drop the unchecked files so the
+    // commit records only the selected ones; the rest stay pending. `unstage`
+    // resolves a relative path against the process cwd, so pass an absolute path
+    // (same gotcha as lock/diff/resolve).
     run_lore(&["stage", ".", "--scan", "--repository", &repo_path])?;
+    for path in &exclude {
+        let abs = std::path::Path::new(&repo_path).join(path);
+        let abs_str = abs.to_string_lossy();
+        run_lore(&["unstage", &abs_str, "--repository", &repo_path])?;
+    }
     run_lore(&["commit", &message, "--repository", &repo_path])?;
     Ok(())
 }
@@ -920,7 +929,7 @@ mod writes_tests {
 
     #[test]
     fn commit_rejects_empty_message() {
-        let err = lore_commit("C:/nonexistent-repo".into(), "   ".into()).unwrap_err();
+        let err = lore_commit("C:/nonexistent-repo".into(), "   ".into(), vec![]).unwrap_err();
         assert!(err.contains("message"), "err was {err}");
     }
 }

@@ -96,7 +96,8 @@ export interface LoreApi {
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
   getDiff(repoPath: string, path: string): Promise<DiffLine[]>
-  commitAll(repoPath: string, message: string): Promise<void>
+  /** Commit the working changes except `exclude` (unchecked files stay pending). */
+  commitAll(repoPath: string, message: string, exclude: string[]): Promise<void>
   push(repoPath: string): Promise<void>
   sync(repoPath: string): Promise<void>
   /** Files the current user holds locked that are part of the pending push. */
