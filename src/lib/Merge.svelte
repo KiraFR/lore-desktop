@@ -13,6 +13,10 @@
   let preview = $state<MergePreview | null>(null)
   let phase = $state<'setup' | 'resolving' | 'done'>('setup')
   let conflicts = $state<MergeConflict[]>([])
+  let selectedPath = $state<string | null>(null)
+  // Which side the user kept per path (local UI state — the backend only reports
+  // resolved/unresolved, not which version won).
+  let resolvedSide = $state<Record<string, 'mine' | 'theirs'>>({})
   let busy = $state<'' | 'merge' | 'start' | 'resolve' | 'commit' | 'abort'>('')
 
   // The merge always targets the current branch (Lore's `branch merge <source>`).
@@ -45,6 +49,7 @@
 
   const canMerge = $derived(!!preview && preview.files > 0 && preview.conflicts === 0)
   const unresolvedCount = $derived(conflicts.filter((c) => c.unresolved).length)
+  const selected = $derived(conflicts.find((c) => c.path === selectedPath) ?? null)
 
   // Clean merge → auto-commit and done.
   async function doMerge() {
@@ -67,6 +72,8 @@
     try {
       await api.mergeStart(p, source)
       conflicts = await api.mergeConflicts(p)
+      resolvedSide = {}
+      selectedPath = conflicts[0]?.path ?? null
       phase = 'resolving'
     } catch (e) { toastError('Merge failed', e) }
     finally { busy = '' }
@@ -78,7 +85,11 @@
     busy = 'resolve'
     try {
       await api.mergeResolve(p, path, side)
+      resolvedSide = { ...resolvedSide, [path]: side }
       conflicts = await api.mergeConflicts(p)
+      // Auto-advance to the next still-unresolved conflict.
+      const next = conflicts.find((c) => c.path !== path && c.unresolved)
+      if (next) selectedPath = next.path
     } catch (e) { toastError('Resolve failed', e) }
     finally { busy = '' }
   }
@@ -122,7 +133,7 @@
       </div>
 
       {#if preview}
-        {#if preview.files === 0}
+        {#if preview.files === 0 && preview.conflicts === 0}
           <div class="info"><Icon name="info" size={16} /> {source} has nothing to add into {target}.</div>
         {:else}
           <div class="info"><Icon name="info" size={16} /> {preview.files} file change{preview.files === 1 ? '' : 's'} from {source} will be added into {target}.</div>
@@ -154,24 +165,45 @@
     <div class="resolveview">
       <div class="warnbar">
         <Icon name="merge" size={15} /> Merging {source} into {target} — {unresolvedCount} of {conflicts.length} to resolve.
-        <span class="legend">mine = {target} · theirs = {source}</span>
       </div>
-      <div class="clist">
-        {#each conflicts as c (c.path)}
-          <div class="crow">
-            {#if c.unresolved}<span class="ci warn"><Icon name="alert" size={15} /></span>{:else}<span class="ci ok"><Icon name="check" size={15} /></span>{/if}
-            <span class="path"><span class="dir">{dir(c.path)}</span>{base(c.path)}</span>
-            <span class="chip">{c.isBinary ? 'binary' : 'text'}</span>
-            {#if c.unresolved}
-              <span class="keeps">
-                <button class="mini" disabled={busy !== ''} onclick={() => resolve(c.path, 'mine')}>Keep mine</button>
-                <button class="mini" disabled={busy !== ''} onclick={() => resolve(c.path, 'theirs')}>Keep theirs</button>
-              </span>
-            {:else}
-              <span class="chip ok">resolved</span>
-            {/if}
-          </div>
-        {/each}
+      <div class="two">
+        <div class="clist">
+          {#each conflicts as c (c.path)}
+            <div class="crow" class:sel={c.path === selectedPath} role="button" tabindex="0"
+                 onclick={() => (selectedPath = c.path)}
+                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedPath = c.path } }}>
+              {#if c.unresolved}<span class="ci warn"><Icon name="alert" size={15} /></span>{:else}<span class="ci ok"><Icon name="check" size={15} /></span>{/if}
+              <span class="path"><span class="dir">{dir(c.path)}</span>{base(c.path)}</span>
+              {#if c.unresolved}<span class="chip">{c.isBinary ? 'binary' : 'text'}</span>{:else}<span class="chip ok">resolved</span>{/if}
+            </div>
+          {/each}
+        </div>
+
+        <div class="rpane">
+          {#if selected}
+            <p class="note">
+              <Icon name="info" size={14} />
+              {selected.isBinary ? "Binary asset — can't merge line by line. Pick the version to keep." : 'Pick the version to keep for this file.'}
+            </p>
+            <div class="vs">
+              <div class="vcard" class:pick={resolvedSide[selected.path] === 'mine'}>
+                <div class="vhd">Mine · {target}</div>
+                <div class="vthumb before"><Icon name="image" size={24} /></div>
+                <button class="keep" class:done={resolvedSide[selected.path] === 'mine'} disabled={busy !== ''} onclick={() => resolve(selected.path, 'mine')}>
+                  {resolvedSide[selected.path] === 'mine' ? 'Kept mine' : 'Keep mine'}
+                </button>
+              </div>
+              <div class="vcard" class:pick={resolvedSide[selected.path] === 'theirs'}>
+                <div class="vhd">Theirs · {source}</div>
+                <div class="vthumb after"><Icon name="image" size={24} /></div>
+                <button class="keep" class:done={resolvedSide[selected.path] === 'theirs'} disabled={busy !== ''} onclick={() => resolve(selected.path, 'theirs')}>
+                  {resolvedSide[selected.path] === 'theirs' ? 'Kept theirs' : 'Keep theirs'}
+                </button>
+              </div>
+            </div>
+            <p class="tip"><Icon name="lock" size={13} /> Tip: lock binary assets before editing to avoid this next time.</p>
+          {/if}
+        </div>
       </div>
       <div class="resbar">
         <span>{conflicts.length - unresolvedCount} of {conflicts.length} resolved</span>
@@ -221,18 +253,31 @@
 
   .resolveview { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .warnbar { display: flex; align-items: center; gap: 9px; background: var(--warn-bg); color: var(--warn-text); padding: 10px 16px; font-size: 12px; border-bottom: 1px solid #4a3a12; }
-  .legend { margin-left: auto; font-size: 11px; color: var(--text-muted); }
-  .clist { flex: 1; overflow: auto; }
-  .crow { display: flex; align-items: center; gap: 9px; padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .two { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+  .clist { width: 300px; flex-shrink: 0; overflow: auto; border-right: 1px solid var(--border); }
+  .crow { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
+  .crow:hover { background: var(--panel); }
+  .crow.sel { background: var(--accent-soft); }
   .ci { display: inline-flex; flex-shrink: 0; }
   .ci.ok { color: var(--added); }
   .ci.warn { color: var(--warn-text); }
-  .chip { flex-shrink: 0; font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
+  .chip { margin-left: auto; flex-shrink: 0; font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
   .chip.ok { color: var(--added); border-color: #245029; }
-  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .dir { color: var(--text-muted); }
-  .keeps { display: inline-flex; gap: 6px; flex-shrink: 0; }
-  .mini { padding: 3px 10px; font-size: 11px; }
+  .rpane { flex: 1; overflow: auto; padding: 16px 18px; min-width: 0; }
+  .note { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; margin: 0 0 12px; }
+  .vs { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+  .vcard { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 13px; }
+  .vcard.pick { border-color: var(--accent); }
+  .vhd { font-size: 12px; font-weight: 500; margin-bottom: 11px; }
+  .vthumb { height: 104px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); margin-bottom: 11px; }
+  .vthumb.before { background: #2b2f35; }
+  .vthumb.after { background: #33475f; }
+  .keep { width: 100%; }
+  .keep.done { background: var(--accent-soft); border-color: #255089; color: var(--accent-text); }
+  .tip { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; margin-top: 14px; }
+  .tip :global(svg) { color: var(--accent-text); }
   .resbar { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--border); font-size: 12px; }
   .spacer { flex: 1; }
 
