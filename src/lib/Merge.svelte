@@ -34,6 +34,21 @@
   }
   $effect(() => { loadBranches() })
 
+  // Resume an already-in-progress merge (e.g. one left unfinished when the view was
+  // closed mid-resolution): jump straight to the resolution phase instead of trying
+  // to start a new merge (which errors with "Cannot merge with staged state").
+  $effect(() => {
+    const p = session.config.currentRepo
+    if (!p) return
+    api.mergeConflicts(p).then((existing) => {
+      if (existing.length > 0 && phase === 'setup') {
+        conflicts = existing
+        selectedPath = existing[0].path
+        phase = 'resolving'
+      }
+    }).catch(() => { /* no in-progress merge */ })
+  })
+
   // Default the source to the first non-current branch; keep it valid.
   $effect(() => {
     if (others.length && !others.some((b) => b.name === source)) source = others[0].name
