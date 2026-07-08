@@ -1,4 +1,4 @@
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergePreview, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, RepoEntry, StatusResult } from './types'
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
@@ -94,6 +94,9 @@ function buildBranches(extra: number): Branch[] {
 }
 
 let branchList: Branch[] = buildBranches(2000)
+
+// In-progress merge conflicts (mock): populated by mergeStart, cleared by commit/abort.
+let mergeConflictState: MergeConflict[] = []
 
 let lockList: LockEntry[] = [
   { path: 'Content/Maps/Level_01.umap', holder: 'you', when: '12 min ago' },
@@ -215,6 +218,29 @@ export const mock: LoreApi = {
   },
   async mergeBranch(_repoPath: string, _source: string, _message: string) {
     await delay(500)
+  },
+  async mergeStart(_repoPath: string, _source: string) {
+    await delay(400)
+    mergeConflictState = [
+      { path: 'Content/Environment/T_Cliff_D.uasset', isBinary: true, unresolved: true },
+      { path: 'Content/Maps/Arena.umap', isBinary: true, unresolved: true },
+    ]
+  },
+  async mergeConflicts(_repoPath: string) {
+    await delay(150)
+    return mergeConflictState.map((c) => ({ ...c }))
+  },
+  async mergeResolve(_repoPath: string, path: string, _side: 'mine' | 'theirs') {
+    await delay(200)
+    mergeConflictState = mergeConflictState.map((c) => (c.path === path ? { ...c, unresolved: false } : c))
+  },
+  async mergeCommit(_repoPath: string, _message: string) {
+    await delay(400)
+    mergeConflictState = []
+  },
+  async mergeAbort(_repoPath: string) {
+    await delay(300)
+    mergeConflictState = []
   },
   async loadConfig() {
     await delay(60)

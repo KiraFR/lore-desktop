@@ -673,6 +673,101 @@ pub fn lore_merge(repo_path: String, source: String, message: String) -> Result<
     Ok(())
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeConflictDto {
+    pub path: String,
+    pub is_binary: bool,
+    pub unresolved: bool,
+}
+
+/// Conflicted files during an in-progress merge: `repositoryStatusFile` entries
+/// with `flagConflict`. `unresolved` = `flagConflictUnresolved` (a resolved file
+/// keeps `flagConflict` true but `flagConflictUnresolved` false until committed).
+fn merge_conflicts_from(events: &[LoreEvent]) -> Vec<MergeConflictDto> {
+    events_with_tag(events, "repositoryStatusFile")
+        .into_iter()
+        .filter(|d| d.get("flagConflict").map(json_truthy).unwrap_or(false))
+        .map(|d| {
+            let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            MergeConflictDto {
+                is_binary: is_binary_path(&path),
+                unresolved: d.get("flagConflictUnresolved").map(json_truthy).unwrap_or(false),
+                path,
+            }
+        })
+        .collect()
+}
+
+/// Start merging `source` into the current branch, entering the conflict-resolution
+/// state (called only when the preview shows conflicts).
+#[tauri::command]
+pub fn lore_merge_start(repo_path: String, source: String) -> Result<(), String> {
+    run_lore(&["branch", "merge", "start", &source, "--repository", &repo_path])?;
+    Ok(())
+}
+
+/// The conflicted files of the in-progress merge.
+#[tauri::command]
+pub fn lore_merge_conflicts(repo_path: String) -> Result<Vec<MergeConflictDto>, String> {
+    let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
+    Ok(merge_conflicts_from(&events))
+}
+
+/// Resolve one conflicted file: `side` = "mine" (current branch) or "theirs"
+/// (source branch). `merge resolve` resolves a relative path against the process
+/// cwd, so pass an absolute path (same gotcha as lock/diff).
+#[tauri::command]
+pub fn lore_merge_resolve(repo_path: String, path: String, side: String) -> Result<(), String> {
+    let sub = if side == "theirs" { "theirs" } else { "mine" };
+    let abs = std::path::Path::new(&repo_path).join(&path);
+    let abs_str = abs.to_string_lossy();
+    run_lore(&["branch", "merge", "resolve", sub, &abs_str, "--repository", &repo_path])?;
+    Ok(())
+}
+
+/// Finalize the merge once every conflict is resolved — a plain commit that
+/// records the merge revision.
+#[tauri::command]
+pub fn lore_merge_commit(repo_path: String, message: String) -> Result<(), String> {
+    run_lore(&["commit", &message, "--repository", &repo_path])?;
+    Ok(())
+}
+
+/// Abort the in-progress merge, restoring the pre-merge working tree.
+#[tauri::command]
+pub fn lore_merge_abort(repo_path: String) -> Result<(), String> {
+    run_lore(&["branch", "merge", "abort", "--repository", &repo_path])?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod merge_conflicts_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const STATUS: &str = concat!(
+        r#"{"tagName":"repositoryStatusFile","data":{"path":"a.txt","flagConflict":true,"flagConflictUnresolved":true}}"#, "\n",
+        r#"{"tagName":"repositoryStatusFile","data":{"path":"Content/M.uasset","flagConflict":true,"flagConflictUnresolved":false}}"#, "\n",
+        r#"{"tagName":"repositoryStatusFile","data":{"path":"clean.txt","flagConflict":false,"flagConflictUnresolved":false}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn lists_conflicts_with_unresolved_flag() {
+        let events = parse_events(STATUS).unwrap();
+        let conflicts = merge_conflicts_from(&events);
+        // Only the two flagConflict files; clean.txt excluded.
+        assert_eq!(conflicts.len(), 2);
+        let a = conflicts.iter().find(|c| c.path == "a.txt").unwrap();
+        assert!(a.unresolved);
+        assert!(!a.is_binary);
+        let m = conflicts.iter().find(|c| c.path == "Content/M.uasset").unwrap();
+        assert!(!m.unresolved);
+        assert!(m.is_binary);
+    }
+}
+
 #[cfg(test)]
 mod merge_tests {
     use super::*;

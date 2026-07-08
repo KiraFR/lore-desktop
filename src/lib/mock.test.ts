@@ -90,6 +90,18 @@ describe('mock api', () => {
     expect(conflicting.conflicts).toBeGreaterThan(0)
   })
 
+  it('merge conflict flow: start → resolve → commit clears conflicts', async () => {
+    await mock.mergeStart('C:/repos/game', 'feature/loot')
+    let conflicts = await mock.mergeConflicts('C:/repos/game')
+    expect(conflicts.length).toBeGreaterThan(0)
+    expect(conflicts.every((c) => c.unresolved)).toBe(true)
+    await mock.mergeResolve('C:/repos/game', conflicts[0].path, 'theirs')
+    conflicts = await mock.mergeConflicts('C:/repos/game')
+    expect(conflicts.find((c) => !c.unresolved)).toBeTruthy()
+    await mock.mergeCommit('C:/repos/game', 'merge')
+    expect(await mock.mergeConflicts('C:/repos/game')).toHaveLength(0)
+  })
+
   it('getDiff returns structured diff lines', async () => {
     const d = await mock.getDiff('C:/repos/game', 'src/x.ts')
     expect(d.length).toBeGreaterThan(0)

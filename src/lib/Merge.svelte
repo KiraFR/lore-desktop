@@ -3,7 +3,7 @@
   import { session } from './session.svelte'
   import { refreshStatus } from './repo.svelte'
   import { toastError } from './toast'
-  import type { Branch, MergePreview } from './types'
+  import type { Branch, MergePreview, MergeConflict } from './types'
   import Icon from './Icon.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
@@ -11,12 +11,16 @@
   let branches = $state<Branch[]>([])
   let source = $state('')
   let preview = $state<MergePreview | null>(null)
-  let phase = $state<'setup' | 'done'>('setup')
-  let busy = $state(false)
+  let phase = $state<'setup' | 'resolving' | 'done'>('setup')
+  let conflicts = $state<MergeConflict[]>([])
+  let busy = $state<'' | 'merge' | 'start' | 'resolve' | 'commit' | 'abort'>('')
 
   // The merge always targets the current branch (Lore's `branch merge <source>`).
   const target = $derived(branches.find((b) => b.current)?.name ?? 'main')
   const others = $derived(branches.filter((b) => b.name !== target))
+
+  const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
+  const dir = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
 
   async function loadBranches() {
     const p = session.config.currentRepo
@@ -39,22 +43,65 @@
   }
   $effect(() => { source; target; if (phase === 'setup') loadPreview() })
 
-  // Only conflict-free merges execute for now; conflicts are a follow-up.
   const canMerge = $derived(!!preview && preview.files > 0 && preview.conflicts === 0)
+  const unresolvedCount = $derived(conflicts.filter((c) => c.unresolved).length)
 
+  // Clean merge → auto-commit and done.
   async function doMerge() {
     const p = session.config.currentRepo
     if (!p || !canMerge || busy) return
-    busy = true
+    busy = 'merge'
     try {
       await api.mergeBranch(p, source, `Merge ${source} into ${target}`)
       await refreshStatus()
       phase = 'done'
-    } catch (e) {
-      toastError('Merge failed', e)
-    } finally {
-      busy = false
-    }
+    } catch (e) { toastError('Merge failed', e) }
+    finally { busy = '' }
+  }
+
+  // Conflicting merge → enter the resolution phase.
+  async function startMerge() {
+    const p = session.config.currentRepo
+    if (!p || busy) return
+    busy = 'start'
+    try {
+      await api.mergeStart(p, source)
+      conflicts = await api.mergeConflicts(p)
+      phase = 'resolving'
+    } catch (e) { toastError('Merge failed', e) }
+    finally { busy = '' }
+  }
+
+  async function resolve(path: string, side: 'mine' | 'theirs') {
+    const p = session.config.currentRepo
+    if (!p || busy) return
+    busy = 'resolve'
+    try {
+      await api.mergeResolve(p, path, side)
+      conflicts = await api.mergeConflicts(p)
+    } catch (e) { toastError('Resolve failed', e) }
+    finally { busy = '' }
+  }
+
+  async function complete() {
+    const p = session.config.currentRepo
+    if (!p || unresolvedCount > 0 || busy) return
+    busy = 'commit'
+    try {
+      await api.mergeCommit(p, `Merge ${source} into ${target}`)
+      await refreshStatus()
+      phase = 'done'
+    } catch (e) { toastError('Merge commit failed', e) }
+    finally { busy = '' }
+  }
+
+  async function abort() {
+    const p = session.config.currentRepo
+    if (!p || busy) return
+    busy = 'abort'
+    try { await api.mergeAbort(p); await refreshStatus() }
+    catch (e) { toastError('Abort failed', e) }
+    finally { busy = ''; onclose() }
   }
 </script>
 
@@ -85,17 +132,53 @@
           <div class="metric" class:warn={preview.conflicts > 0}><div class="k">Conflicts</div><div class="v">{preview.conflicts}</div></div>
         </div>
         {#if preview.conflicts > 0}
-          <div class="warnrow">
-            <Icon name="alert" size={15} />
-            {preview.conflicts} conflicting file{preview.conflicts === 1 ? '' : 's'} — conflict resolution isn't available yet; resolve or abort in the CLI for now.
-          </div>
+          <div class="warnrow"><Icon name="alert" size={15} /> {preview.conflicts} conflicting file{preview.conflicts === 1 ? '' : 's'} — you'll choose a version for each.</div>
         {/if}
       {/if}
 
       <div class="actions">
         <button onclick={onclose}>Cancel</button>
-        <button class="accent" onclick={doMerge} disabled={!canMerge || busy}>
-          <Icon name="merge" size={15} /> {busy ? 'Merging…' : `Merge into ${target}`}
+        {#if preview && preview.conflicts > 0}
+          <button class="accent" onclick={startMerge} disabled={busy !== ''}>
+            <Icon name="merge" size={15} /> {busy === 'start' ? 'Starting…' : `Resolve & merge into ${target}`}
+          </button>
+        {:else}
+          <button class="accent" onclick={doMerge} disabled={!canMerge || busy !== ''}>
+            <Icon name="merge" size={15} /> {busy === 'merge' ? 'Merging…' : `Merge into ${target}`}
+          </button>
+        {/if}
+      </div>
+    </div>
+
+  {:else if phase === 'resolving'}
+    <div class="resolveview">
+      <div class="warnbar">
+        <Icon name="merge" size={15} /> Merging {source} into {target} — {unresolvedCount} of {conflicts.length} to resolve.
+        <span class="legend">mine = {target} · theirs = {source}</span>
+      </div>
+      <div class="clist">
+        {#each conflicts as c (c.path)}
+          <div class="crow">
+            {#if c.unresolved}<span class="ci warn"><Icon name="alert" size={15} /></span>{:else}<span class="ci ok"><Icon name="check" size={15} /></span>{/if}
+            <span class="path"><span class="dir">{dir(c.path)}</span>{base(c.path)}</span>
+            <span class="chip">{c.isBinary ? 'binary' : 'text'}</span>
+            {#if c.unresolved}
+              <span class="keeps">
+                <button class="mini" disabled={busy !== ''} onclick={() => resolve(c.path, 'mine')}>Keep mine</button>
+                <button class="mini" disabled={busy !== ''} onclick={() => resolve(c.path, 'theirs')}>Keep theirs</button>
+              </span>
+            {:else}
+              <span class="chip ok">resolved</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+      <div class="resbar">
+        <span>{conflicts.length - unresolvedCount} of {conflicts.length} resolved</span>
+        <span class="spacer"></span>
+        <button onclick={abort} disabled={busy !== ''}>Abort merge</button>
+        <button class="accent" disabled={unresolvedCount > 0 || busy !== ''} onclick={complete}>
+          {busy === 'commit' ? 'Completing…' : 'Complete merge'}
         </button>
       </div>
     </div>
@@ -135,6 +218,23 @@
   .warnrow :global(svg) { flex-shrink: 0; }
   .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
   .actions .accent { display: inline-flex; align-items: center; gap: 7px; }
+
+  .resolveview { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .warnbar { display: flex; align-items: center; gap: 9px; background: var(--warn-bg); color: var(--warn-text); padding: 10px 16px; font-size: 12px; border-bottom: 1px solid #4a3a12; }
+  .legend { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+  .clist { flex: 1; overflow: auto; }
+  .crow { display: flex; align-items: center; gap: 9px; padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .ci { display: inline-flex; flex-shrink: 0; }
+  .ci.ok { color: var(--added); }
+  .ci.warn { color: var(--warn-text); }
+  .chip { flex-shrink: 0; font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
+  .chip.ok { color: var(--added); border-color: #245029; }
+  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .dir { color: var(--text-muted); }
+  .keeps { display: inline-flex; gap: 6px; flex-shrink: 0; }
+  .mini { padding: 3px 10px; font-size: 11px; }
+  .resbar { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--border); font-size: 12px; }
+  .spacer { flex: 1; }
 
   .doneview { flex: 1; display: grid; place-items: center; padding: 20px; }
   .donecard { text-align: center; max-width: 340px; }

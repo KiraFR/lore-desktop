@@ -49,9 +49,8 @@ export interface Branch {
 export interface MergeConflict {
   path: string
   isBinary: boolean
-  mine: { author: string; rev: number }
-  theirs: { author: string; rev: number }
-  resolved?: 'mine' | 'theirs' | null
+  /** Still needs a mine/theirs choice; false once resolved (until the merge commits). */
+  unresolved: boolean
 }
 
 export interface MergePreview {
@@ -110,8 +109,18 @@ export interface LoreApi {
   switchBranch(repoPath: string, name: string): Promise<void>
   createBranch(repoPath: string, name: string, basedOn: string): Promise<void>
   previewMerge(repoPath: string, source: string, target: string): Promise<MergePreview>
-  /** Merge `source` into the current branch (clean/no-conflict merges only for now). */
+  /** Merge `source` into the current branch (clean/no-conflict path — auto-commits). */
   mergeBranch(repoPath: string, source: string, message: string): Promise<void>
+  /** Start a conflicting merge of `source` into the current branch (enters resolution). */
+  mergeStart(repoPath: string, source: string): Promise<void>
+  /** Conflicted files of the in-progress merge. */
+  mergeConflicts(repoPath: string): Promise<MergeConflict[]>
+  /** Resolve one file with 'mine' (current) or 'theirs' (source). */
+  mergeResolve(repoPath: string, path: string, side: 'mine' | 'theirs'): Promise<void>
+  /** Finalize the merge once all conflicts are resolved. */
+  mergeCommit(repoPath: string, message: string): Promise<void>
+  /** Abort the in-progress merge. */
+  mergeAbort(repoPath: string): Promise<void>
   getLocks(repoPath: string): Promise<LockEntry[]>
   loadConfig(): Promise<AppConfig>
   saveConfig(config: AppConfig): Promise<void>
