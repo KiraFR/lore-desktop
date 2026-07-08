@@ -617,6 +617,87 @@ pub fn lore_commit_files(
     Ok(commit_files_from(&events))
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePreviewDto {
+    pub files: u64,
+    pub conflicts: u64,
+}
+
+/// Parse `lore branch diff` output: `branchDiffChangeBegin.changesCount` is the
+/// number of incoming file changes, `branchDiffConflictBegin.conflictsCount` the
+/// number of conflicts.
+fn merge_preview_from(events: &[LoreEvent]) -> MergePreviewDto {
+    let files = events_with_tag(events, "branchDiffChangeBegin")
+        .into_iter()
+        .next()
+        .and_then(|d| d.get("changesCount").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    let conflicts = events_with_tag(events, "branchDiffConflictBegin")
+        .into_iter()
+        .next()
+        .and_then(|d| d.get("conflictsCount").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    MergePreviewDto { files, conflicts }
+}
+
+/// The current branch name (the merge target).
+fn current_branch(repo_path: &str) -> Result<String, String> {
+    let events = run_lore(&["status", "--repository", repo_path])?;
+    Ok(events_with_tag(&events, "repositoryStatusRevision")
+        .into_iter()
+        .next()
+        .and_then(|d| d.get("branchName").and_then(|v| v.as_str()).map(String::from))
+        .unwrap_or_default())
+}
+
+/// Preview merging `source` into the current branch: the incoming file + conflict
+/// counts, via `lore branch diff <current> --source <source>` (non-mutating).
+#[tauri::command]
+pub fn lore_merge_preview(repo_path: String, source: String) -> Result<MergePreviewDto, String> {
+    let target = current_branch(&repo_path)?;
+    let events = run_lore(&[
+        "branch", "diff", &target, "--source", &source, "--repository", &repo_path,
+    ])?;
+    Ok(merge_preview_from(&events))
+}
+
+/// Merge `source` into the current branch. Auto-commits when there are no
+/// conflicts (the frontend only calls this for a conflict-free preview);
+/// conflict resolution is a follow-up.
+#[tauri::command]
+pub fn lore_merge(repo_path: String, source: String, message: String) -> Result<(), String> {
+    run_lore(&[
+        "branch", "merge", &source, "--message", &message, "--repository", &repo_path,
+    ])?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    const DIFF: &str = concat!(
+        r#"{"tagName":"branchDiffBegin","data":{"unused":0}}"#, "\n",
+        r#"{"tagName":"branchDiffChangeBegin","data":{"changesCount":2}}"#, "\n",
+        r#"{"tagName":"branchDiffChange","data":{"change":{"action":"delete","path":"notes.txt","automerged":false}}}"#, "\n",
+        r#"{"tagName":"branchDiffChange","data":{"change":{"action":"add","path":"new.rs","automerged":false}}}"#, "\n",
+        r#"{"tagName":"branchDiffChangeEnd","data":{"unused":0}}"#, "\n",
+        r#"{"tagName":"branchDiffConflictBegin","data":{"conflictsCount":1}}"#, "\n",
+        r#"{"tagName":"branchDiffConflictEnd","data":{"unused":0}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn parses_change_and_conflict_counts() {
+        let events = parse_events(DIFF).unwrap();
+        let preview = merge_preview_from(&events);
+        assert_eq!(preview.files, 2);
+        assert_eq!(preview.conflicts, 1);
+    }
+}
+
 #[cfg(test)]
 mod commit_files_tests {
     use super::*;

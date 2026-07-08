@@ -37,6 +37,8 @@ pub fn run() {
         commands::lore_create_branch,
         commands::lore_pushed_lock_files,
         commands::lore_commit_files,
+        commands::lore_merge_preview,
+        commands::lore_merge,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

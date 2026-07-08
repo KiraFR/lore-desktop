@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, LockEntry, LoreApi, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, LockEntry, LoreApi, MergePreview, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -30,6 +30,8 @@ export const tauriApi: LoreApi = {
   setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
   getLocks: (repoPath) => invoke<LockEntry[]>('lore_locks', { repoPath }),
   getBranches: (repoPath) => invoke<Branch[]>('lore_branches', { repoPath }),
+  previewMerge: (repoPath, source) => invoke<MergePreview>('lore_merge_preview', { repoPath, source }),
+  mergeBranch: (repoPath, source, message) => invoke<void>('lore_merge', { repoPath, source, message }),
   switchBranch: (repoPath, name) => invoke<void>('lore_switch_branch', { repoPath, name }),
   // The base is always the current HEAD in Lore, so `basedOn` is not forwarded.
   createBranch: (repoPath, name) => invoke<void>('lore_create_branch', { repoPath, name }),

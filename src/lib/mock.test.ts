@@ -82,6 +82,14 @@ describe('mock api', () => {
     expect(files).toContain('Content/Maps/Level_01.umap')
   })
 
+  it('previewMerge returns file + conflict counts', async () => {
+    const clean = await mock.previewMerge('C:/repos/game', 'main', 'feature/loot')
+    expect(typeof clean.files).toBe('number')
+    expect(typeof clean.conflicts).toBe('number')
+    const conflicting = await mock.previewMerge('C:/repos/game', 'feature/loot', 'main')
+    expect(conflicting.conflicts).toBeGreaterThan(0)
+  })
+
   it('getDiff returns structured diff lines', async () => {
     const d = await mock.getDiff('C:/repos/game', 'src/x.ts')
     expect(d.length).toBeGreaterThan(0)

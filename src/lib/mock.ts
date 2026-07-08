@@ -209,17 +209,12 @@ export const mock: LoreApi = {
   },
   async previewMerge(_repoPath: string, source: string, target: string): Promise<MergePreview> {
     await delay(300)
-    if (source === target) return { commits: 0, files: 0, conflicts: [] }
-    if (source === 'feature/loot') {
-      return {
-        commits: 8, files: 23,
-        conflicts: [
-          { path: 'Content/Environment/T_Cliff_D.uasset', isBinary: true, mine: { author: 'you', rev: 146 }, theirs: { author: 'Maya R', rev: 151 } },
-          { path: 'Content/Maps/Arena.umap', isBinary: true, mine: { author: 'you', rev: 146 }, theirs: { author: 'Alex L', rev: 150 } },
-        ],
-      }
-    }
-    return { commits: 3, files: 5, conflicts: [] }
+    if (source === target) return { files: 0, conflicts: 0 }
+    if (source === 'feature/loot') return { files: 23, conflicts: 2 }
+    return { files: 5, conflicts: 0 }
+  },
+  async mergeBranch(_repoPath: string, _source: string, _message: string) {
+    await delay(500)
   },
   async loadConfig() {
     await delay(60)

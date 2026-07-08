@@ -55,9 +55,10 @@ export interface MergeConflict {
 }
 
 export interface MergePreview {
-  commits: number
+  /** Incoming file changes the merge would bring in. */
   files: number
-  conflicts: MergeConflict[]
+  /** Number of conflicting files (0 = a clean, executable merge). */
+  conflicts: number
 }
 
 export interface LockEntry {
@@ -109,6 +110,8 @@ export interface LoreApi {
   switchBranch(repoPath: string, name: string): Promise<void>
   createBranch(repoPath: string, name: string, basedOn: string): Promise<void>
   previewMerge(repoPath: string, source: string, target: string): Promise<MergePreview>
+  /** Merge `source` into the current branch (clean/no-conflict merges only for now). */
+  mergeBranch(repoPath: string, source: string, message: string): Promise<void>
   getLocks(repoPath: string): Promise<LockEntry[]>
   loadConfig(): Promise<AppConfig>
   saveConfig(config: AppConfig): Promise<void>
