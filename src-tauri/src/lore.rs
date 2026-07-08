@@ -56,15 +56,29 @@ pub fn events_with_tag<'a>(events: &'a [LoreEvent], tag: &str) -> Vec<&'a Value>
 }
 
 use std::process::Command;
+use std::time::Duration;
+
+/// Hard cap on any single `lore` invocation. A remote call that hangs (offline /
+/// transport error) must never wedge a command indefinitely — it errors instead.
+const LORE_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// Run `lore <args> --json`, capturing stdout. `--json` is appended here so
-/// callers pass only the subcommand + options.
+/// callers pass only the subcommand + options. The process runs on a helper
+/// thread with a timeout so a hung remote call returns an error rather than
+/// blocking forever. (Commands are async + `spawn_blocking`, so this never runs
+/// on the UI thread.)
 pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
-    let output = Command::new("lore")
-        .args(args)
-        .arg("--json")
-        .output()
-        .map_err(|e| format!("failed to launch lore: {e}"))?;
+    let mut owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+    owned.push("--json".to_string());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(Command::new("lore").args(&owned).output());
+    });
+    let output = match rx.recv_timeout(LORE_TIMEOUT) {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => return Err(format!("failed to launch lore: {e}")),
+        Err(_) => return Err("lore command timed out".to_string()),
+    };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let events = parse_events(&stdout)?;
     check_ok(&events)?;

@@ -57,11 +57,20 @@ export async function loadMoreHistory() {
   history.cursor = page.nextCursor
 }
 
-export async function refreshLocks() {
+// Locks come from a remote query that can be slow/offline — callers refresh them
+// in the background (`silent`) so a hung lock check never blocks the UI or spams
+// toasts. Annotates the current status files with their lock holder.
+export async function refreshLocks(silent = false) {
   const path = session.config.currentRepo
   if (!path) { locks.list = []; return }
-  try { locks.list = await api.getLocks(path) }
-  catch (e) { toastError("Couldn't load locks", e) }
+  let lockList: LockEntry[]
+  try { lockList = await api.getLocks(path) }
+  catch (e) { if (!silent) toastError("Couldn't load locks", e); return }
+  locks.list = lockList
+  if (repo.status) {
+    const holderByPath = new Map(lockList.map((l) => [l.path, l.holder]))
+    repo.status.files = repo.status.files.map((f) => ({ ...f, lockedBy: holderByPath.get(f.path) ?? null }))
+  }
 }
 
 export async function refreshBranches(silent = false) {
@@ -78,21 +87,14 @@ export async function refreshStatus(silent = false) {
   if (!path) { repo.status = null; return }
   if (!silent) repo.busy = 'status'
   try {
-    const status = await api.getStatus(path)
-    // Locks are a separate query; annotate each file's holder so the Changes /
-    // preview lock toggle reflects reality. Best-effort — a lock-query failure
-    // must not hide the status.
-    let lockList: LockEntry[] = []
-    try { lockList = await api.getLocks(path) } catch { /* ignore */ }
-    const holderByPath = new Map(lockList.map((l) => [l.path, l.holder]))
-    status.files = status.files.map((f) => ({ ...f, lockedBy: holderByPath.get(f.path) ?? null }))
-    repo.status = status
-    locks.list = lockList
-    // Best-effort, decoupled from the status paint: refresh the branch list at the
-    // same trigger points (focus, sync, push, commit, repo change).
-    refreshBranches(true)
+    repo.status = await api.getStatus(path)
   } catch (e) { toastError("Couldn't load changes", e) }
   finally { if (!silent) repo.busy = '' }
+  // Locks + branches hit a remote query that can be slow/offline — fetch them in
+  // the background so they NEVER hold the status render or disable the buttons.
+  // They annotate / fill in when they arrive (or quietly no-op when offline).
+  refreshLocks(true)
+  refreshBranches(true)
 }
 
 async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Promise<void>) {
@@ -138,8 +140,7 @@ export async function releaseLocks(paths: string[]) {
     try { await api.setLock(p, path, false) }
     catch (e) { toastError('Unlock failed', e) }
   }
-  await refreshStatus()
-  await refreshLocks()
+  await refreshStatus() // also refreshes locks in the background
 }
 
 export async function setLock(path: string, lock: boolean) {
@@ -147,8 +148,7 @@ export async function setLock(path: string, lock: boolean) {
   if (!p) return
   try { await api.setLock(p, path, lock) }
   catch (e) { toastError(lock ? 'Lock failed' : 'Unlock failed', e); return }
-  await refreshStatus()
-  await refreshLocks()
+  await refreshStatus() // also refreshes locks in the background
 }
 
 export async function discardFile(path: string) {

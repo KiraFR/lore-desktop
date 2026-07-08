@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { session, bootstrap } from './lib/session.svelte'
-  import { repo, refreshStatus, refreshLocks } from './lib/repo.svelte'
+  import { repo, refreshStatus } from './lib/repo.svelte'
   import { ui, setView } from './lib/ui.svelte'
   import SignIn from './lib/SignIn.svelte'
   import TitleBar from './lib/TitleBar.svelte'
@@ -32,11 +32,11 @@
     return () => window.removeEventListener('focus', onFocus)
   })
 
-  // Reload status + locks whenever the selected repository changes.
+  // Reload whenever the selected repository changes. refreshStatus also refreshes
+  // locks + branches in the background, so they never block the initial render.
   $effect(() => {
     session.config.currentRepo
     refreshStatus()
-    refreshLocks()
   })
 
   const files = $derived(repo.status?.files ?? [])

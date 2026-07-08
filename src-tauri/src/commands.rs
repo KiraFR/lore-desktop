@@ -1,5 +1,18 @@
 use crate::lore::{events_with_tag, run_lore, LoreEvent};
 
+/// Run a blocking body on the async runtime's worker pool so a slow or hung
+/// `lore` call never blocks the UI thread — the invoke promise just pends.
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    match tauri::async_runtime::spawn_blocking(f).await {
+        Ok(r) => r,
+        Err(e) => Err(format!("task failed: {e}")),
+    }
+}
+
 #[tauri::command]
 pub fn ping() -> String {
     "pong".to_string()
@@ -13,13 +26,16 @@ fn is_authenticated_from(events: &[crate::lore::LoreEvent], now_ms: i64) -> bool
 }
 
 #[tauri::command]
-pub fn lore_is_authenticated() -> Result<bool, String> {
-    let events = run_lore(&["auth", "list"])?;
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0);
-    Ok(is_authenticated_from(&events, now_ms))
+pub async fn lore_is_authenticated() -> Result<bool, String> {
+    blocking(move || {
+        let events = run_lore(&["auth", "list"])?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        Ok(is_authenticated_from(&events, now_ms))
+    })
+    .await
 }
 
 use serde::Serialize;
@@ -92,13 +108,16 @@ fn json_truthy(v: &serde_json::Value) -> bool {
 }
 
 #[tauri::command]
-pub fn lore_status(repo_path: String) -> Result<StatusResultDto, String> {
+pub async fn lore_status(repo_path: String) -> Result<StatusResultDto, String> {
     // `--scan` reconciles the working tree so edits/adds/deletes show up in the
     // Changes view (a read-only status without it misses unstaged working changes,
     // which would leave the Commit button disabled). Non-destructive: it refreshes
     // dirty flags on the local working copy, it does not touch file contents.
-    let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
-    Ok(status_from(&events))
+    blocking(move || {
+        let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
+        Ok(status_from(&events))
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -120,9 +139,12 @@ fn repositories_from(events: &[LoreEvent]) -> Vec<RepoEntryDto> {
 }
 
 #[tauri::command]
-pub fn lore_repositories(server_url: String) -> Result<Vec<RepoEntryDto>, String> {
-    let events = run_lore(&["repository", "list", &server_url])?;
-    Ok(repositories_from(&events))
+pub async fn lore_repositories(server_url: String) -> Result<Vec<RepoEntryDto>, String> {
+    blocking(move || {
+        let events = run_lore(&["repository", "list", &server_url])?;
+        Ok(repositories_from(&events))
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -271,32 +293,35 @@ fn assign_lanes_by_branch(commits: &mut [CommitDto], branch_ids: &[String]) {
 }
 
 #[tauri::command]
-pub fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> Result<HistoryPage, String> {
-    let len = length.to_string();
-    let mut args: Vec<&str> = vec!["history", &len, "--repository", &repo_path];
-    if let Some(ref c) = cursor {
-        args.push("--revision");
-        args.push(c);
-    }
-    let events = run_lore(&args)?;
-    let mut page = history_from(&events);
-    // When paging, `--revision <cursor>` re-includes the cursor commit as the
-    // first entry; drop it so pages don't overlap.
-    if cursor.is_some() && !page.commits.is_empty() {
-        page.commits.remove(0);
-    }
-    // Label commits that are a branch's tip with the branch name (e.g. "main",
-    // "feature/x") so a stacked branch's commits are distinguishable from the base.
-    // Best-effort: a branch-list failure just leaves the labels off.
-    if let Ok(branch_events) = run_lore(&["branch", "list", "--repository", &repo_path]) {
-        let tips = branch_tips_from(&branch_events);
-        for c in page.commits.iter_mut() {
-            if let Some(name) = tips.get(&c.id) {
-                c.head = Some(name.clone());
+pub async fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> Result<HistoryPage, String> {
+    blocking(move || {
+        let len = length.to_string();
+        let mut args: Vec<&str> = vec!["history", &len, "--repository", &repo_path];
+        if let Some(ref c) = cursor {
+            args.push("--revision");
+            args.push(c);
+        }
+        let events = run_lore(&args)?;
+        let mut page = history_from(&events);
+        // When paging, `--revision <cursor>` re-includes the cursor commit as the
+        // first entry; drop it so pages don't overlap.
+        if cursor.is_some() && !page.commits.is_empty() {
+            page.commits.remove(0);
+        }
+        // Label commits that are a branch's tip with the branch name (e.g. "main",
+        // "feature/x") so a stacked branch's commits are distinguishable from the base.
+        // Best-effort: a branch-list failure just leaves the labels off.
+        if let Ok(branch_events) = run_lore(&["branch", "list", "--repository", &repo_path]) {
+            let tips = branch_tips_from(&branch_events);
+            for c in page.commits.iter_mut() {
+                if let Some(name) = tips.get(&c.id) {
+                    c.head = Some(name.clone());
+                }
             }
         }
-    }
-    Ok(page)
+        Ok(page)
+    })
+    .await
 }
 
 /// Build the `(clone URL, destination path)` pair for a clone.
@@ -315,27 +340,33 @@ fn build_clone_args(server_url: &str, repo_id: &str, repo_name: &str, dest_paren
 /// created path. `run_lore` blocks until the clone finishes and errors on a
 /// non-zero terminal `complete.status` — the picker shows that as a toast.
 #[tauri::command]
-pub fn lore_clone(
+pub async fn lore_clone(
     server_url: String,
     repo_id: String,
     repo_name: String,
     dest_parent: String,
 ) -> Result<String, String> {
-    let (url, path) = build_clone_args(&server_url, &repo_id, &repo_name, &dest_parent);
-    run_lore(&["clone", &url, &path])?;
-    Ok(path)
+    blocking(move || {
+        let (url, path) = build_clone_args(&server_url, &repo_id, &repo_name, &dest_parent);
+        run_lore(&["clone", &url, &path])?;
+        Ok(path)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("lore");
-    cmd.arg("login");
-    if let Some(ref a) = auth_url {
-        cmd.arg("--auth-url").arg(a);
-    }
-    cmd.arg(&server_url);
-    let status = cmd.status().map_err(|e| format!("failed to launch lore login: {e}"))?;
-    if status.success() { Ok(()) } else { Err("sign-in failed or was cancelled".to_string()) }
+pub async fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), String> {
+    blocking(move || {
+        let mut cmd = std::process::Command::new("lore");
+        cmd.arg("login");
+        if let Some(ref a) = auth_url {
+            cmd.arg("--auth-url").arg(a);
+        }
+        cmd.arg(&server_url);
+        let status = cmd.status().map_err(|e| format!("failed to launch lore login: {e}"))?;
+        if status.success() { Ok(()) } else { Err("sign-in failed or was cancelled".to_string()) }
+    })
+    .await
 }
 
 /// `lore lock` subcommand for a lock/unlock toggle.
@@ -347,41 +378,56 @@ fn lock_subcommand(lock: bool) -> &'static str {
     }
 }
 
-/// Stage the whole working tree then commit it. Selective staging is a follow-up;
-/// this commits everything, matching the current UI (checkboxes are decorative).
-#[tauri::command]
-pub fn lore_commit(repo_path: String, message: String, exclude: Vec<String>) -> Result<(), String> {
+fn require_commit_message(message: &str) -> Result<(), String> {
     if message.trim().is_empty() {
-        return Err("commit message is required".to_string());
+        Err("commit message is required".to_string())
+    } else {
+        Ok(())
     }
-    // Stage everything (incl. deletions), then drop the unchecked files so the
-    // commit records only the selected ones; the rest stay pending. `unstage`
-    // resolves a relative path against the process cwd, so pass an absolute path
-    // (same gotcha as lock/diff/resolve).
-    run_lore(&["stage", ".", "--scan", "--repository", &repo_path])?;
-    for path in &exclude {
-        let abs = std::path::Path::new(&repo_path).join(path);
-        let abs_str = abs.to_string_lossy();
-        run_lore(&["unstage", &abs_str, "--repository", &repo_path])?;
-    }
-    run_lore(&["commit", &message, "--repository", &repo_path])?;
-    Ok(())
+}
+
+/// Stage the working tree then commit the selected files. `exclude` (unchecked
+/// files) are unstaged before the commit so only the checked ones are recorded.
+#[tauri::command]
+pub async fn lore_commit(repo_path: String, message: String, exclude: Vec<String>) -> Result<(), String> {
+    require_commit_message(&message)?;
+    blocking(move || {
+        // Stage everything (incl. deletions), then drop the unchecked files so the
+        // commit records only the selected ones; the rest stay pending. `unstage`
+        // resolves a relative path against the process cwd, so pass an absolute path
+        // (same gotcha as lock/diff/resolve).
+        run_lore(&["stage", ".", "--scan", "--repository", &repo_path])?;
+        for path in &exclude {
+            let abs = std::path::Path::new(&repo_path).join(path);
+            let abs_str = abs.to_string_lossy();
+            run_lore(&["unstage", &abs_str, "--repository", &repo_path])?;
+        }
+        run_lore(&["commit", &message, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn lore_push(repo_path: String) -> Result<(), String> {
-    run_lore(&["push", "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_push(repo_path: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["push", "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// Discard a file's working changes, restoring the committed version. `lore reset`
 /// resolves a relative path against the process cwd, so pass an absolute path.
 #[tauri::command]
-pub fn lore_discard_file(repo_path: String, path: String) -> Result<(), String> {
-    let abs = std::path::Path::new(&repo_path).join(&path);
-    let abs_str = abs.to_string_lossy();
-    run_lore(&["reset", &abs_str, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_discard_file(repo_path: String, path: String) -> Result<(), String> {
+    blocking(move || {
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy();
+        run_lore(&["reset", &abs_str, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// A short-lived, unique scratch dir for backing up files during an undo.
@@ -403,12 +449,16 @@ fn undo_backup_dir() -> std::path::PathBuf {
 /// The result: the branch tip moves back and the changes reappear as pending.
 /// Caller must ensure the working tree is otherwise clean (== the tip).
 #[tauri::command]
-pub fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<(), String> {
+pub async fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<(), String> {
+    blocking(move || undo_commit_blocking(&repo_path, &parent_revision)).await
+}
+
+fn undo_commit_blocking(repo_path: &str, parent_revision: &str) -> Result<(), String> {
     use std::fs;
-    let repo = std::path::Path::new(&repo_path);
+    let repo = std::path::Path::new(repo_path);
 
     // 1. The commit's files (working tree still == the tip here).
-    let diff_events = run_lore(&["diff", "--source", &parent_revision, "--repository", &repo_path])?;
+    let diff_events = run_lore(&["diff", "--source", parent_revision, "--repository", repo_path])?;
     let files = commit_files_from(&diff_events);
 
     // 2. Back up the content of added/modified files (their on-disk = committed version).
@@ -429,7 +479,7 @@ pub fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<()
     }
 
     // 3. Hard reset the branch to the parent (working tree reverts to parent).
-    if let Err(e) = run_lore(&["branch", "reset", &parent_revision, "--repository", &repo_path]) {
+    if let Err(e) = run_lore(&["branch", "reset", parent_revision, "--repository", repo_path]) {
         let _ = fs::remove_dir_all(&backup); // nothing mutated on disk yet
         return Err(e);
     }
@@ -460,19 +510,25 @@ pub fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<()
 /// Plain `lore sync` — pulls/merges the remote into the local branch
 /// non-destructively (NO `--reset`, which would discard local modifications).
 #[tauri::command]
-pub fn lore_sync(repo_path: String) -> Result<(), String> {
-    run_lore(&["sync", "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_sync(repo_path: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["sync", "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), String> {
-    // `lore lock` resolves a relative path against the process cwd, not `--repository`,
-    // so build an absolute path inside the repo.
-    let abs = std::path::Path::new(&repo_path).join(&path);
-    let abs_str = abs.to_string_lossy();
-    run_lore(&["lock", lock_subcommand(lock), &abs_str, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), String> {
+    blocking(move || {
+        // `lore lock` resolves a relative path against the process cwd, not
+        // `--repository`, so build an absolute path inside the repo.
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy();
+        run_lore(&["lock", lock_subcommand(lock), &abs_str, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -526,10 +582,13 @@ fn locks_from(events: &[LoreEvent], me: &str) -> Vec<LockEntryDto> {
 }
 
 #[tauri::command]
-pub fn lore_locks(repo_path: String) -> Result<Vec<LockEntryDto>, String> {
-    let me = current_user_id();
-    let events = run_lore(&["lock", "query", "--repository", &repo_path])?;
-    Ok(locks_from(&events, &me))
+pub async fn lore_locks(repo_path: String) -> Result<Vec<LockEntryDto>, String> {
+    blocking(move || {
+        let me = current_user_id();
+        let events = run_lore(&["lock", "query", "--repository", &repo_path])?;
+        Ok(locks_from(&events, &me))
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -569,9 +628,12 @@ fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
 }
 
 #[tauri::command]
-pub fn lore_branches(repo_path: String) -> Result<Vec<BranchDto>, String> {
-    let events = run_lore(&["branch", "list", "--repository", &repo_path])?;
-    Ok(branches_from(&events))
+pub async fn lore_branches(repo_path: String) -> Result<Vec<BranchDto>, String> {
+    blocking(move || {
+        let events = run_lore(&["branch", "list", "--repository", &repo_path])?;
+        Ok(branches_from(&events))
+    })
+    .await
 }
 
 /// Map each branch's local tip revision hash → branch name, from `branchListEntry`
@@ -599,17 +661,23 @@ fn branch_tips_from(events: &[LoreEvent]) -> std::collections::HashMap<String, S
 }
 
 #[tauri::command]
-pub fn lore_switch_branch(repo_path: String, name: String) -> Result<(), String> {
-    run_lore(&["branch", "switch", &name, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_switch_branch(repo_path: String, name: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["branch", "switch", &name, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// `lore branch create` makes the branch from the current latest and auto-switches
 /// to it, so no separate switch is needed. The base is always the current HEAD.
 #[tauri::command]
-pub fn lore_create_branch(repo_path: String, name: String) -> Result<(), String> {
-    run_lore(&["branch", "create", &name, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_create_branch(repo_path: String, name: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["branch", "create", &name, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// The set of file paths changed in a revision-range diff (`fileDiff` events).
@@ -630,46 +698,49 @@ fn is_zero_revision(rev: &str) -> bool {
 /// just-pushed locks after a push. Empty when nothing is ahead; on a first push
 /// (no remote tip yet) every held lock qualifies since the whole tree is pushed.
 #[tauri::command]
-pub fn lore_pushed_lock_files(repo_path: String) -> Result<Vec<String>, String> {
-    // 1. My held locks; nothing to offer if I hold none.
-    let me = current_user_id();
-    let lock_events = run_lore(&["lock", "query", "--repository", &repo_path])?;
-    let mine: Vec<String> = locks_from(&lock_events, &me)
-        .into_iter()
-        .filter(|l| l.holder == "you")
-        .map(|l| l.path)
-        .collect();
-    if mine.is_empty() {
-        return Ok(vec![]);
-    }
+pub async fn lore_pushed_lock_files(repo_path: String) -> Result<Vec<String>, String> {
+    blocking(move || {
+        // 1. My held locks; nothing to offer if I hold none.
+        let me = current_user_id();
+        let lock_events = run_lore(&["lock", "query", "--repository", &repo_path])?;
+        let mine: Vec<String> = locks_from(&lock_events, &me)
+            .into_iter()
+            .filter(|l| l.holder == "you")
+            .map(|l| l.path)
+            .collect();
+        if mine.is_empty() {
+            return Ok(vec![]);
+        }
 
-    // 2. Remote vs local tip; nothing to push if they match.
-    let status_events = run_lore(&["status", "--repository", &repo_path])?;
-    let rev = events_with_tag(&status_events, "repositoryStatusRevision")
-        .into_iter()
-        .next();
-    let (remote, local) = match rev {
-        Some(d) => (
-            d.get("revisionRemote").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            d.get("revisionLocal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        ),
-        None => return Ok(vec![]),
-    };
-    if is_zero_revision(&local) || remote == local {
-        return Ok(vec![]);
-    }
+        // 2. Remote vs local tip; nothing to push if they match.
+        let status_events = run_lore(&["status", "--repository", &repo_path])?;
+        let rev = events_with_tag(&status_events, "repositoryStatusRevision")
+            .into_iter()
+            .next();
+        let (remote, local) = match rev {
+            Some(d) => (
+                d.get("revisionRemote").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                d.get("revisionLocal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            ),
+            None => return Ok(vec![]),
+        };
+        if is_zero_revision(&local) || remote == local {
+            return Ok(vec![]);
+        }
 
-    // 3. First push: the whole working tree is pushed, so every held lock qualifies.
-    if is_zero_revision(&remote) {
-        return Ok(mine);
-    }
+        // 3. First push: the whole working tree is pushed, so every held lock qualifies.
+        if is_zero_revision(&remote) {
+            return Ok(mine);
+        }
 
-    // 4. Otherwise intersect my locks with the pushed changeset.
-    let diff_events = run_lore(&[
-        "diff", "--source", &remote, "--target", &local, "--repository", &repo_path,
-    ])?;
-    let pushed = pushed_paths_from(&diff_events);
-    Ok(mine.into_iter().filter(|p| pushed.contains(p)).collect())
+        // 4. Otherwise intersect my locks with the pushed changeset.
+        let diff_events = run_lore(&[
+            "diff", "--source", &remote, "--target", &local, "--repository", &repo_path,
+        ])?;
+        let pushed = pushed_paths_from(&diff_events);
+        Ok(mine.into_iter().filter(|p| pushed.contains(p)).collect())
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -695,7 +766,7 @@ fn commit_files_from(events: &[LoreEvent]) -> Vec<CommitFileDto> {
 /// click, never eagerly for every row). A root commit (no parent) has no diff
 /// base, so it returns an empty list.
 #[tauri::command]
-pub fn lore_commit_files(
+pub async fn lore_commit_files(
     repo_path: String,
     revision: String,
     parent: String,
@@ -703,10 +774,13 @@ pub fn lore_commit_files(
     if is_zero_revision(&parent) {
         return Ok(vec![]);
     }
-    let events = run_lore(&[
-        "diff", "--source", &parent, "--target", &revision, "--repository", &repo_path,
-    ])?;
-    Ok(commit_files_from(&events))
+    blocking(move || {
+        let events = run_lore(&[
+            "diff", "--source", &parent, "--target", &revision, "--repository", &repo_path,
+        ])?;
+        Ok(commit_files_from(&events))
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -746,23 +820,29 @@ fn current_branch(repo_path: &str) -> Result<String, String> {
 /// Preview merging `source` into the current branch: the incoming file + conflict
 /// counts, via `lore branch diff <current> --source <source>` (non-mutating).
 #[tauri::command]
-pub fn lore_merge_preview(repo_path: String, source: String) -> Result<MergePreviewDto, String> {
-    let target = current_branch(&repo_path)?;
-    let events = run_lore(&[
-        "branch", "diff", &target, "--source", &source, "--repository", &repo_path,
-    ])?;
-    Ok(merge_preview_from(&events))
+pub async fn lore_merge_preview(repo_path: String, source: String) -> Result<MergePreviewDto, String> {
+    blocking(move || {
+        let target = current_branch(&repo_path)?;
+        let events = run_lore(&[
+            "branch", "diff", &target, "--source", &source, "--repository", &repo_path,
+        ])?;
+        Ok(merge_preview_from(&events))
+    })
+    .await
 }
 
 /// Merge `source` into the current branch. Auto-commits when there are no
 /// conflicts (the frontend only calls this for a conflict-free preview);
 /// conflict resolution is a follow-up.
 #[tauri::command]
-pub fn lore_merge(repo_path: String, source: String, message: String) -> Result<(), String> {
-    run_lore(&[
-        "branch", "merge", &source, "--message", &message, "--repository", &repo_path,
-    ])?;
-    Ok(())
+pub async fn lore_merge(repo_path: String, source: String, message: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&[
+            "branch", "merge", &source, "--message", &message, "--repository", &repo_path,
+        ])?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -794,43 +874,58 @@ fn merge_conflicts_from(events: &[LoreEvent]) -> Vec<MergeConflictDto> {
 /// Start merging `source` into the current branch, entering the conflict-resolution
 /// state (called only when the preview shows conflicts).
 #[tauri::command]
-pub fn lore_merge_start(repo_path: String, source: String) -> Result<(), String> {
-    run_lore(&["branch", "merge", "start", &source, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_merge_start(repo_path: String, source: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["branch", "merge", "start", &source, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// The conflicted files of the in-progress merge.
 #[tauri::command]
-pub fn lore_merge_conflicts(repo_path: String) -> Result<Vec<MergeConflictDto>, String> {
-    let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
-    Ok(merge_conflicts_from(&events))
+pub async fn lore_merge_conflicts(repo_path: String) -> Result<Vec<MergeConflictDto>, String> {
+    blocking(move || {
+        let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
+        Ok(merge_conflicts_from(&events))
+    })
+    .await
 }
 
 /// Resolve one conflicted file: `side` = "mine" (current branch) or "theirs"
 /// (source branch). `merge resolve` resolves a relative path against the process
 /// cwd, so pass an absolute path (same gotcha as lock/diff).
 #[tauri::command]
-pub fn lore_merge_resolve(repo_path: String, path: String, side: String) -> Result<(), String> {
-    let sub = if side == "theirs" { "theirs" } else { "mine" };
-    let abs = std::path::Path::new(&repo_path).join(&path);
-    let abs_str = abs.to_string_lossy();
-    run_lore(&["branch", "merge", "resolve", sub, &abs_str, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_merge_resolve(repo_path: String, path: String, side: String) -> Result<(), String> {
+    blocking(move || {
+        let sub = if side == "theirs" { "theirs" } else { "mine" };
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy();
+        run_lore(&["branch", "merge", "resolve", sub, &abs_str, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// Finalize the merge once every conflict is resolved — a plain commit that
 /// records the merge revision.
 #[tauri::command]
-pub fn lore_merge_commit(repo_path: String, message: String) -> Result<(), String> {
-    run_lore(&["commit", &message, "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_merge_commit(repo_path: String, message: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["commit", &message, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 /// Abort the in-progress merge, restoring the pre-merge working tree.
 #[tauri::command]
-pub fn lore_merge_abort(repo_path: String) -> Result<(), String> {
-    run_lore(&["branch", "merge", "abort", "--repository", &repo_path])?;
-    Ok(())
+pub async fn lore_merge_abort(repo_path: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["branch", "merge", "abort", "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -1012,7 +1107,7 @@ mod writes_tests {
 
     #[test]
     fn commit_rejects_empty_message() {
-        let err = lore_commit("C:/nonexistent-repo".into(), "   ".into(), vec![]).unwrap_err();
+        let err = require_commit_message("   ").unwrap_err();
         assert!(err.contains("message"), "err was {err}");
     }
 }
@@ -1182,19 +1277,22 @@ fn parse_diff(patch: &str) -> Vec<DiffLineDto> {
 
 /// Diff of `<path>` (current revision vs working copy) as structured lines.
 #[tauri::command]
-pub fn lore_diff(repo_path: String, path: String) -> Result<Vec<DiffLineDto>, String> {
-    // `lore diff` resolves a relative path against the process cwd, not
-    // `--repository`, so pass an absolute path (same as `lore lock`).
-    let abs = std::path::Path::new(&repo_path).join(&path);
-    let abs_str = abs.to_string_lossy();
-    let events = run_lore(&["diff", &abs_str, "--repository", &repo_path])?;
-    let patch = events_with_tag(&events, "fileDiff")
-        .into_iter()
-        .next()
-        .and_then(|d| d.get("patch").and_then(|v| v.as_str()))
-        .unwrap_or("")
-        .to_string();
-    Ok(parse_diff(&patch))
+pub async fn lore_diff(repo_path: String, path: String) -> Result<Vec<DiffLineDto>, String> {
+    blocking(move || {
+        // `lore diff` resolves a relative path against the process cwd, not
+        // `--repository`, so pass an absolute path (same as `lore lock`).
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy();
+        let events = run_lore(&["diff", &abs_str, "--repository", &repo_path])?;
+        let patch = events_with_tag(&events, "fileDiff")
+            .into_iter()
+            .next()
+            .and_then(|d| d.get("patch").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        Ok(parse_diff(&patch))
+    })
+    .await
 }
 
 #[cfg(test)]
