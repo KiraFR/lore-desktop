@@ -9,6 +9,7 @@
   let message = $state('')
   let description = $state('')
   let staged = $state(new Set<string>())
+  let filter = $state('')
 
   const glyph: Record<string, { c: string; v: string }> = {
     add: { c: 'added', v: '+' }, modify: { c: 'modified', v: '~' }, delete: { c: 'deleted', v: '−' },
@@ -18,6 +19,8 @@
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
 
   const files = $derived(repo.status?.files ?? [])
+  const query = $derived(filter.trim().toLowerCase())
+  const shown = $derived(query ? files.filter((f) => f.path.toLowerCase().includes(query)) : files)
   const branch = $derived(repo.status?.branch ?? 'main')
   const stagedCount = $derived(files.filter((f) => staged.has(f.path)).length)
 
@@ -46,16 +49,20 @@
 </script>
 
 <section class="changes">
-  <div class="colhead">Changes <span class="n">{files.length} {files.length === 1 ? 'file' : 'files'}</span></div>
+  <div class="colhead">Changes <span class="n">{query ? `${shown.length} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span></div>
+
+  <input class="filter" bind:value={filter} placeholder="Filter files" />
 
   <div class="filelist">
     {#if repo.busy === 'status' && !repo.status}
       <p class="muted pad">Scanning…</p>
     {:else if files.length === 0}
       <div class="empty muted"><p>No local changes.</p></div>
+    {:else if shown.length === 0}
+      <p class="muted pad">No files match.</p>
     {:else}
       <ul>
-        {#each files as f (f.path)}
+        {#each shown as f (f.path)}
           <li class="file" class:sel={f.path === selectedPath}>
             <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
             <div class="rowmain" role="button" tabindex="0"
@@ -92,6 +99,7 @@
   .changes { display: flex; flex-direction: column; width: 320px; flex-shrink: 0; overflow: hidden; border-right: 1px solid var(--border); }
   .colhead { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
   .colhead .n { color: var(--text-dim); font-size: 12px; margin-left: 4px; }
+  .filter { display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .pad { padding: 8px 12px; }
   .filelist { flex: 1; overflow: auto; }
   .filelist ul { list-style: none; margin: 0; padding: 4px 0; }
