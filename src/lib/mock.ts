@@ -1,4 +1,22 @@
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+
+/** Minimal valid WAV (0.2 s of silence) so the mock audio player renders and plays. */
+export function silentWavDataUrl(): string {
+  const sampleRate = 8000, samples = 1600
+  const buf = new ArrayBuffer(44 + samples * 2)
+  const v = new DataView(buf)
+  const w4 = (o: number, s: string) => { for (let i = 0; i < 4; i++) v.setUint8(o + i, s.charCodeAt(i)) }
+  w4(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true); w4(8, 'WAVE')
+  w4(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true)
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true)
+  w4(36, 'data'); v.setUint32(40, samples * 2, true)
+  let bin = ''
+  new Uint8Array(buf).forEach((b) => (bin += String.fromCharCode(b)))
+  return `data:audio/wav;base64,${btoa(bin)}`
+}
+
+const PREVIEW_IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif|tga|tiff?|dds|exr|hdr|psd)$/i
+const PREVIEW_AUDIO_RE = /\.(wav|ogg|mp3|flac)$/i
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
@@ -140,6 +158,22 @@ export const mock: LoreApi = {
   async getIdentity(_repoPath: string) {
     await delay(100)
     return { id: 'mock-user', email: 'jane.doe@studio.dev' }
+  },
+  async getPreview(_repoPath: string, path: string) {
+    await delay(200)
+    if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: silentWavDataUrl() } as PreviewData
+    if (PREVIEW_IMAGE_RE.test(path)) {
+      const name = path.split('/').pop() ?? path
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">` +
+        `<defs><pattern id="c" width="32" height="32" patternUnits="userSpaceOnUse">` +
+        `<rect width="32" height="32" fill="#2b2f35"/><rect width="16" height="16" fill="#3a4048"/>` +
+        `<rect x="16" y="16" width="16" height="16" fill="#3a4048"/></pattern></defs>` +
+        `<rect width="512" height="512" fill="url(#c)"/>` +
+        `<text x="256" y="264" font-family="sans-serif" font-size="26" fill="#9fb0c0" text-anchor="middle">${name}</text></svg>`
+      return { kind: 'image', url: `data:image/svg+xml,${encodeURIComponent(svg)}`, width: 2048, height: 2048 } as PreviewData
+    }
+    return { kind: 'none', url: null } as PreviewData
   },
   async cloneRepo(_serverUrl: string, _repoId: string, repoName: string, destParent: string) {
     await delay(600) // simulate the network + disk work

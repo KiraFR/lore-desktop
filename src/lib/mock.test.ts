@@ -64,6 +64,17 @@ describe('mock api', () => {
     expect(after.files.map((f) => f.path)).toEqual([keep])
   })
 
+  it('getPreview classifies image, audio, and none', async () => {
+    const img = await mock.getPreview('C:/repos/game', 'Content/T_Rock.dds')
+    expect(img.kind).toBe('image')
+    expect(img.url).toMatch(/^data:image\/svg\+xml,/)
+    const au = await mock.getPreview('C:/repos/game', 'Audio/hit.wav')
+    expect(au.kind).toBe('audio')
+    expect(au.url).toMatch(/^data:audio\/wav;base64,/)
+    const no = await mock.getPreview('C:/repos/game', 'Source/main.cpp')
+    expect(no.kind).toBe('none')
+  })
+
   it('persists config to localStorage', async () => {
     await mock.saveConfig({ serverUrl: 'lore://x:1', currentRepo: 'C:/r', recentRepos: ['C:/r'] })
     const cfg = await mock.loadConfig()

@@ -21,6 +21,15 @@ export interface StatusResult {
   files: ChangedFile[]
 }
 
+export interface PreviewData {
+  kind: 'image' | 'audio' | 'none'
+  /** image: PNG data URL of the thumbnail; audio: streamable URL; none: null. */
+  url: string | null
+  /** Source dimensions (image only). */
+  width?: number
+  height?: number
+}
+
 export interface Identity {
   id: string
   /** The account email as the server knows it (authUserInfo.name). */
@@ -106,6 +115,8 @@ export interface LoreApi {
   pickRepoFile(repoPath: string): Promise<string | null>
   /** Identity per the current repo's server; rejects when no repo/no session. */
   getIdentity(repoPath: string): Promise<Identity>
+  /** Working-copy visual/audio preview of a repo file. */
+  getPreview(repoPath: string, path: string): Promise<PreviewData>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>

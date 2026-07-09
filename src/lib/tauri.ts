@@ -1,7 +1,7 @@
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, MergeConflict, MergePreview, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -25,6 +25,14 @@ export const tauriApi: LoreApi = {
   },
   getIdentity: (repoPath) => invoke<Identity>('lore_identity', { repoPath }),
   signOut: () => invoke<void>('lore_sign_out'),
+  getPreview: async (repoPath, path): Promise<PreviewData> => {
+    const r = await invoke<{ kind: string; dataUrl: string | null; width?: number | null; height?: number | null }>(
+      'lore_preview', { repoPath, path, maxPx: 512 })
+    if (r.kind === 'audio') return { kind: 'audio', url: convertFileSrc(`${repoPath}/${path}`) }
+    if (r.kind === 'image' && r.dataUrl)
+      return { kind: 'image', url: r.dataUrl, width: r.width ?? undefined, height: r.height ?? undefined }
+    return { kind: 'none', url: null }
+  },
   cloneRepo: (serverUrl, repoId, repoName, destParent) =>
     invoke<string>('lore_clone', { serverUrl, repoId, repoName, destParent }),
   loadConfig: () => invoke<AppConfig>('config_load'),
