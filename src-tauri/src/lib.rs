@@ -1,12 +1,14 @@
 mod commands;
 mod config;
 mod lore;
+mod notifications;
 mod preview;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
+    .manage(notifications::NotifState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -50,6 +52,8 @@ pub fn run() {
         commands::lore_identity,
         commands::lore_sign_out,
         preview::lore_preview,
+        notifications::lore_notifications_start,
+        notifications::lore_notifications_stop,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
