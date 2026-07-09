@@ -168,6 +168,10 @@ export const mock: LoreApi = {
     await delay(100)
     return { id: 'mock-user', email: 'jane.doe@studio.dev' }
   },
+  async startNotifications() {
+    // No simulated team noise in dev — the real flow is exercised in Tauri.
+    return () => {}
+  },
   async getPreview(_repoPath: string, path: string) {
     await delay(200)
     if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: mockWavDataUrl() } as PreviewData

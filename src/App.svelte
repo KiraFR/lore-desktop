@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { session, bootstrap, loadIdentity } from './lib/session.svelte'
+  import { watchRepo } from './lib/notifications.svelte'
   import { repo, refreshStatus } from './lib/repo.svelte'
   import { ui, setView } from './lib/ui.svelte'
   import SignIn from './lib/SignIn.svelte'
@@ -38,6 +39,11 @@
     session.config.currentRepo
     refreshStatus()
     loadIdentity()
+  })
+
+  // Live server events (teammate pushes, lock changes) for the open repo.
+  $effect(() => {
+    watchRepo(session.signedIn ? session.config.currentRepo : null)
   })
 
   const files = $derived(repo.status?.files ?? [])

@@ -21,6 +21,9 @@ export interface StatusResult {
   files: ChangedFile[]
 }
 
+export type { LoreNotification } from './notifyRouting'
+import type { LoreNotification } from './notifyRouting'
+
 export interface PreviewData {
   kind: 'image' | 'audio' | 'model' | 'none'
   /** image: PNG data URL of the thumbnail; audio/model: streamable URL; none: null. */
@@ -117,6 +120,8 @@ export interface LoreApi {
   getIdentity(repoPath: string): Promise<Identity>
   /** Working-copy visual/audio preview of a repo file. `maxPx` bounds image thumbnails (default 512). */
   getPreview(repoPath: string, path: string, maxPx?: number): Promise<PreviewData>
+  /** Live server events for the repo; resolves to a stop function. */
+  startNotifications(repoPath: string, onEvent: (e: LoreNotification) => void): Promise<() => void>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>

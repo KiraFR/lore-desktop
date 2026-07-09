@@ -1,7 +1,8 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -25,6 +26,14 @@ export const tauriApi: LoreApi = {
   },
   getIdentity: (repoPath) => invoke<Identity>('lore_identity', { repoPath }),
   signOut: () => invoke<void>('lore_sign_out'),
+  startNotifications: async (repoPath, onEvent) => {
+    const unlisten = await listen<LoreNotification>('lore://notification', (e) => onEvent(e.payload))
+    await invoke('lore_notifications_start', { repoPath })
+    return () => {
+      unlisten()
+      invoke('lore_notifications_stop').catch(() => { /* app closing */ })
+    }
+  },
   getPreview: async (repoPath, path, maxPx): Promise<PreviewData> => {
     const r = await invoke<{ kind: string; dataUrl: string | null; width?: number | null; height?: number | null }>(
       'lore_preview', { repoPath, path, maxPx: maxPx ?? 512 })

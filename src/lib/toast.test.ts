@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { get } from 'svelte/store'
-import { toasts, toastError, toastAction, dismissToast } from './toast'
+import { toasts, toastError, toastAction, toastInfo, dismissToast } from './toast'
 
 describe('toast store', () => {
   beforeEach(() => { toasts.set([]) })
@@ -23,6 +23,14 @@ describe('toast store', () => {
     expect(list[0].action?.label).toBe('Release locks')
     list[0].action!.run()
     expect(ran).toBe(true)
+  })
+
+  it('toastInfo adds a plain info toast', () => {
+    toastInfo('Rev 7 pushed by a teammate')
+    const list = get(toasts)
+    expect(list).toHaveLength(1)
+    expect(list[0].variant).toBe('info')
+    expect(list[0].action).toBeUndefined()
   })
 
   it('dismissToast removes the toast', () => {

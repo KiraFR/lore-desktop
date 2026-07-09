@@ -43,6 +43,14 @@ export function toastAction(title: string, action: ToastAction): number {
   return id
 }
 
+/** Push a plain informational toast (accent, no action). */
+export function toastInfo(title: string): number {
+  const id = nextId++
+  toasts.update((list) => [...list, { id, title, message: '', variant: 'info' }])
+  setTimeout(() => dismissToast(id), ERROR_TTL)
+  return id
+}
+
 export function dismissToast(id: number): void {
   toasts.update((list) => list.filter((t) => t.id !== id))
 }
