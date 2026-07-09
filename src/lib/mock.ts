@@ -303,6 +303,10 @@ export const mock: LoreApi = {
     branchList = [...branchList, { name, current: true }]
     stateFor(repoPath).branch = name
   },
+  async archiveBranch(_repoPath: string, name: string) {
+    await delay(250)
+    branchList = branchList.filter((b) => b.name !== name)
+  },
   async previewMerge(_repoPath: string, source: string, target: string): Promise<MergePreview> {
     await delay(300)
     if (source === target) return { files: 0, conflicts: 0 }

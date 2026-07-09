@@ -68,4 +68,5 @@ export const tauriApi: LoreApi = {
   switchBranch: (repoPath, name) => invoke<void>('lore_switch_branch', { repoPath, name }),
   // The base is always the current HEAD in Lore, so `basedOn` is not forwarded.
   createBranch: (repoPath, name) => invoke<void>('lore_create_branch', { repoPath, name }),
+  archiveBranch: (repoPath, name) => invoke<void>('lore_archive_branch', { repoPath, name }),
 }

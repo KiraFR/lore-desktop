@@ -917,6 +917,17 @@ pub async fn lore_create_branch(repo_path: String, name: String) -> Result<(), S
     .await
 }
 
+/// Archive a branch: it disappears from `branch list` output (and thus from the
+/// UI, which already filters `archived: true`); nothing is deleted.
+#[tauri::command]
+pub async fn lore_archive_branch(repo_path: String, name: String) -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["branch", "archive", &name, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
+}
+
 /// The set of file paths changed in a revision-range diff (`fileDiff` events).
 fn pushed_paths_from(events: &[LoreEvent]) -> std::collections::HashSet<String> {
     events_with_tag(events, "fileDiff")

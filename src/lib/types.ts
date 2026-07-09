@@ -162,6 +162,8 @@ export interface LoreApi {
   getBranches(repoPath: string): Promise<Branch[]>
   switchBranch(repoPath: string, name: string): Promise<void>
   createBranch(repoPath: string, name: string, basedOn: string): Promise<void>
+  /** Archive a branch (it disappears from lists; files untouched). */
+  archiveBranch(repoPath: string, name: string): Promise<void>
   previewMerge(repoPath: string, source: string, target: string): Promise<MergePreview>
   /** Merge `source` into the current branch (clean/no-conflict path — auto-commits). */
   mergeBranch(repoPath: string, source: string, message: string): Promise<void>

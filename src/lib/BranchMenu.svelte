@@ -3,6 +3,7 @@
   import { session } from './session.svelte'
   import { refreshStatus, refreshBranches, branches } from './repo.svelte'
   import { setView } from './ui.svelte'
+  import { confirmAction } from './confirm'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
@@ -63,6 +64,25 @@
     }
   }
 
+  async function archive(name: string) {
+    const p = session.config.currentRepo
+    if (!p || busy) return
+    const ok = await confirmAction(
+      `Archive branch "${name}"? It disappears from branch lists; nothing is deleted.`,
+      'Archive branch',
+    )
+    if (!ok) return
+    busy = true
+    try {
+      await api.archiveBranch(p, name)
+      await refreshBranches()
+    } catch (e) {
+      toastError('Archive failed', e)
+    } finally {
+      busy = false
+    }
+  }
+
   function mergeInto() { setView('merge'); onclose() }
 </script>
 
@@ -72,12 +92,18 @@
   <div class="list" bind:this={listEl} onscroll={onListScroll} style="height:{listHeight}px">
     <div class="listvp" style="height:{shown.length * ROW_H}px">
       {#each windowBranches as b, k (b.name)}
-        <button class="item" class:cur={b.current} style="top:{(winFirst + k) * ROW_H}px; height:{ROW_H}px"
-                onclick={() => (b.current ? onclose() : switchTo(b.name))} disabled={busy}>
-          <span class="dot" style="background:{LANE[(winFirst + k) % LANE.length]}"></span>
-          <span class="bn">{b.name}</span>
-          {#if b.current}<Icon name="check" size={14} />{/if}
-        </button>
+        <div class="rowwrap" style="top:{(winFirst + k) * ROW_H}px; height:{ROW_H}px">
+          <button class="item" class:cur={b.current}
+                  onclick={() => (b.current ? onclose() : switchTo(b.name))} disabled={busy}>
+            <span class="dot" style="background:{LANE[(winFirst + k) % LANE.length]}"></span>
+            <span class="bn">{b.name}</span>
+            {#if b.current}<Icon name="check" size={14} />{/if}
+          </button>
+          {#if !b.current}
+            <button class="arch" title="Archive (hides from lists; nothing is deleted)"
+                    onclick={() => archive(b.name)} disabled={busy}>Archive</button>
+          {/if}
+        </div>
       {/each}
     </div>
   </div>
@@ -99,8 +125,12 @@
   .sec { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); padding: 2px 12px 5px; }
   .list { overflow-y: auto; overflow-x: hidden; }
   .listvp { position: relative; }
-  .item { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }
+  .rowwrap { position: absolute; left: 0; right: 0; }
+  .item { position: static; width: 100%; height: 100%; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }
   .item:hover:not(:disabled) { background: var(--panel-hover); border: none; }
+  .arch { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); display: none; padding: 2px 6px; font-size: 10px; line-height: 1.3; color: var(--text-muted); background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
+  .rowwrap:hover .arch { display: block; }
+  .arch:hover:not(:disabled) { color: var(--text); background: var(--panel-hover); }
   .item.cur { color: var(--accent-text); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .bn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
