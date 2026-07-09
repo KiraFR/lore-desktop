@@ -16,7 +16,7 @@
 
 **Files:** Modify `src-tauri/src/preview.rs`
 
-- [ ] **Step 1:** Add after `IMAGE_EXTS`:
+- [x] **Step 1:** Add after `IMAGE_EXTS`:
 
 ```rust
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
@@ -55,7 +55,7 @@ Test in the `tests` module:
     }
 ```
 
-- [ ] **Step 2:** `cargo test --manifest-path src-tauri/Cargo.toml` PASS → commit `feat(preview): model kind streams via asset protocol`.
+- [x] **Step 2:** `cargo test --manifest-path src-tauri/Cargo.toml` PASS → commit `feat(preview): model kind streams via asset protocol`.
 
 ---
 
@@ -63,7 +63,7 @@ Test in the `tests` module:
 
 **Files:** Create `src/lib/previewKind.ts`, `src/lib/previewKind.test.ts`, `src/lib/thumbs.svelte.ts` ; Modify `src/lib/types.ts`, `src/lib/tauri.ts`, `src/lib/mock.ts`, `src/lib/repo.svelte.ts`
 
-- [ ] **Step 1:** `previewKind.ts` (+ tests: png/dds true, cpp/wav false):
+- [x] **Step 1:** `previewKind.ts` (+ tests: png/dds true, cpp/wav false):
 
 ```ts
 /** Shared classifier: files whose rows/panels can show an image thumbnail. */
@@ -73,9 +73,9 @@ export function isPreviewableImage(path: string): boolean {
 }
 ```
 
-- [ ] **Step 2:** types.ts — `PreviewData.kind` union gains `'model'`; `getPreview(repoPath: string, path: string, maxPx?: number)`.
+- [x] **Step 2:** types.ts — `PreviewData.kind` union gains `'model'`; `getPreview(repoPath: string, path: string, maxPx?: number)`.
 
-- [ ] **Step 3:** tauri.ts —
+- [x] **Step 3:** tauri.ts —
 
 ```ts
   getPreview: async (repoPath, path, maxPx): Promise<PreviewData> => {
@@ -89,7 +89,7 @@ export function isPreviewableImage(path: string): boolean {
   },
 ```
 
-- [ ] **Step 4:** mock.ts — replace the local image regex by `isPreviewableImage`; add:
+- [x] **Step 4:** mock.ts — replace the local image regex by `isPreviewableImage`; add:
 
 ```ts
 const PREVIEW_MODEL_RE = /\.(glb|gltf|obj|fbx)$/i
@@ -107,7 +107,7 @@ model branch in `getPreview` (before the image branch):
 
 Seed: add `{ path: 'Content/Props/SM_Crate.obj', action: 'add', isBinary: true, size: 20480 },` after the wav seed.
 
-- [ ] **Step 5:** `thumbs.svelte.ts`:
+- [x] **Step 5:** `thumbs.svelte.ts`:
 
 ```ts
 import { SvelteMap } from 'svelte/reactivity'
@@ -149,9 +149,9 @@ export function clearThumbs() {
 }
 ```
 
-- [ ] **Step 6:** repo.svelte.ts — `refreshStatus` calls `clearThumbs()` right after `repo.status = await api.getStatus(path)` (import from `./thumbs.svelte`).
+- [x] **Step 6:** repo.svelte.ts — `refreshStatus` calls `clearThumbs()` right after `repo.status = await api.getStatus(path)` (import from `./thumbs.svelte`).
 
-- [ ] **Step 7:** `npm run check && npm test` PASS → commit `feat(previews): model kind, shared classifier, row-thumbnail store`.
+- [x] **Step 7:** `npm run check && npm test` PASS → commit `feat(previews): model kind, shared classifier, row-thumbnail store`.
 
 ---
 
@@ -159,7 +159,7 @@ export function clearThumbs() {
 
 **Files:** Modify `src/lib/Changes.svelte`, `src/lib/History.svelte`, `src/lib/Locks.svelte`
 
-- [ ] **Step 1:** Each view imports `{ listThumbs, requestThumb }`, requests in an effect (`action !== 'delete'` guarded where applicable), and renders before the path:
+- [x] **Step 1:** Each view imports `{ listThumbs, requestThumb }`, requests in an effect (`action !== 'delete'` guarded where applicable), and renders before the path:
 
 ```svelte
 {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
@@ -171,7 +171,7 @@ CSS (each view): `.rowthumb { width: 20px; height: 20px; border-radius: 4px; obj
 - History detail: effect over `detailFiles`; thumb in the `.fl li` rows.
 - Locks: effect over `locks.list`; thumb replaces the `iconFor` icon when present.
 
-- [ ] **Step 2:** `npm run check` PASS → commit `feat(previews): row thumbnails in Changes, commit detail, and Locks`.
+- [x] **Step 2:** `npm run check` PASS → commit `feat(previews): row thumbnails in Changes, commit detail, and Locks`.
 
 ---
 
@@ -179,9 +179,9 @@ CSS (each view): `.rowthumb { width: 20px; height: 20px; border-radius: 4px; obj
 
 **Files:** Create `src/lib/ModelViewer.svelte`; Modify `src/lib/FilePreview.svelte`, `package.json` (three — already installed)
 
-- [ ] **Step 1:** ModelViewer per the spec: three/addons `OrbitControls` + `GLTFLoader`/`OBJLoader`/`FBXLoader` picked by `name` extension, hemisphere+key light, subtle grid, auto-fit (center + camera at 1.8 × maxDim, near/far adapted, grid scaled/floored), `autoRotate` until the first `start` event, `ResizeObserver`, `setAnimationLoop`, full disposal (geometries, materials, renderer, DOM). `failed` state → dashed fallback box. Missing normals → `computeVertexNormals()`.
+- [x] **Step 1:** ModelViewer per the spec: three/addons `OrbitControls` + `GLTFLoader`/`OBJLoader`/`FBXLoader` picked by `name` extension, hemisphere+key light, subtle grid, auto-fit (center + camera at 1.8 × maxDim, near/far adapted, grid scaled/floored), `autoRotate` until the first `start` event, `ResizeObserver`, `setAnimationLoop`, full disposal (geometries, materials, renderer, DOM). `failed` state → dashed fallback box. Missing normals → `computeVertexNormals()`.
 
-- [ ] **Step 2:** FilePreview — insert between the audio and image branches:
+- [x] **Step 2:** FilePreview — insert between the audio and image branches:
 
 ```svelte
         {:else if preview?.kind === 'model' && preview.url}
@@ -189,7 +189,7 @@ CSS (each view): `.rowthumb { width: 20px; height: 20px; border-radius: 4px; obj
           <p class="note muted"><Icon name="info" size={14} /> 3D preview of the working copy — drag to orbit, scroll to zoom.</p>
 ```
 
-- [ ] **Step 3:** `npm run check && npm test` PASS → commit `feat(previews): three.js turntable viewer for glb/gltf/obj/fbx`.
+- [x] **Step 3:** `npm run check && npm test` PASS → commit `feat(previews): three.js turntable viewer for glb/gltf/obj/fbx`.
 
 ---
 
