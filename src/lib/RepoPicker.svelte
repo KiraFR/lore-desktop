@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from './api'
-  import { session, selectRepo } from './session.svelte'
+  import { session } from './session.svelte'
+  import { addExistingRepo, cloneServerRepo } from './repoActions'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
@@ -22,28 +23,18 @@
   }
 
   async function openFolder() {
-    const path = await api.pickFolder()
-    if (!path) return // cancelled
     busy = 'open'
     try {
-      await api.getStatus(path) // validates it is a Lore working copy
-      await selectRepo(path)
-    } catch (e) {
-      toastError('Not a Lore repository', e)
+      await addExistingRepo()
     } finally {
       busy = ''
     }
   }
 
   async function cloneRepo(entry: RepoEntry) {
-    const parent = await api.pickFolder()
-    if (!parent) return // cancelled
     busy = `clone:${entry.id}`
     try {
-      const path = await api.cloneRepo(session.config.serverUrl!, entry.id, entry.name, parent)
-      await selectRepo(path)
-    } catch (e) {
-      toastError('Clone failed', e)
+      await cloneServerRepo(entry)
     } finally {
       busy = ''
     }
