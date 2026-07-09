@@ -2,10 +2,16 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo, locks, refreshLocks, setLock } from './repo.svelte'
+  import { listThumbs, requestThumb } from './thumbs.svelte'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
   $effect(() => { session.config.currentRepo; refreshLocks() })
+
+  // Queue row thumbnails for previewable locked images.
+  $effect(() => {
+    for (const l of locks.list) requestThumb(l.path)
+  })
 
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
   const dir = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
@@ -53,7 +59,11 @@
     <div class="list">
       {#each locks.list as l (l.path)}
         <div class="lrow">
-          <span class="fi"><Icon name={iconFor(l.path)} size={17} /></span>
+          {#if listThumbs.get(l.path)}
+            <img class="rowthumb" src={listThumbs.get(l.path)} alt="" />
+          {:else}
+            <span class="fi"><Icon name={iconFor(l.path)} size={17} /></span>
+          {/if}
           <span class="path"><span class="dir">{dir(l.path)}</span>{base(l.path)}</span>
           <span class="holder" class:you={l.holder === 'you'}>{l.holder}</span>
           <span class="when">{l.when}</span>
@@ -79,6 +89,7 @@
   .list { display: flex; flex-direction: column; gap: 8px; }
   .lrow { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
   .fi { color: var(--text-muted); display: inline-flex; flex-shrink: 0; }
+  .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12.5px; }
   .dir { color: var(--text-muted); }
   .holder { flex-shrink: 0; font-size: 11px; border-radius: 999px; padding: 2px 9px; background: var(--panel-hover); color: var(--text-muted); }

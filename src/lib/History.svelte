@@ -2,6 +2,7 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo, history, refreshHistory, loadMoreHistory, undoCommit } from './repo.svelte'
+  import { listThumbs, requestThumb } from './thumbs.svelte'
   import { initialsFor } from './identity'
   import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
@@ -39,6 +40,11 @@
       .then((files) => { if (selected?.id === c.id) detailFiles = files })
       .catch(() => { if (selected?.id === c.id) detailError = true })
       .finally(() => { if (selected?.id === c.id) detailLoading = false })
+  })
+
+  // Queue row thumbnails for the selected commit's files (working-copy content).
+  $effect(() => {
+    for (const f of detailFiles) if (f.action !== 'delete') requestThumb(f.path)
   })
 
   const detailCounts = $derived({
@@ -210,7 +216,7 @@
       {:else}
         <ul class="fl">
           {#each detailFiles as f (f.path)}
-            <li><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span><span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
+            <li><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
           {/each}
         </ul>
       {/if}
@@ -250,6 +256,7 @@
   .floading { font-size: 12.5px; padding: 6px 0; }
   .fl { list-style: none; margin: 0; padding: 0; }
   .fl li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+  .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
   .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
