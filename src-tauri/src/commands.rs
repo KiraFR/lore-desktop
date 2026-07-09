@@ -55,6 +55,9 @@ pub struct StatusResultDto {
     pub branch: String,
     pub local_ahead: u64,
     pub remote_ahead: u64,
+    pub revision_number: u64,
+    pub remote_available: bool,
+    pub remote_authorized: bool,
     pub files: Vec<ChangedFileDto>,
 }
 
@@ -87,6 +90,10 @@ fn status_from(events: &[LoreEvent]) -> StatusResultDto {
     let is_remote_ahead = rev.and_then(|d| d.get("isRemoteAhead")).map(json_truthy).unwrap_or(false);
     let local_ahead = if is_local_ahead { local_n.saturating_sub(remote_n) } else { 0 };
     let remote_ahead = if is_remote_ahead { remote_n.saturating_sub(local_n) } else { 0 };
+    let revision_number = rev.and_then(|d| d.get("revisionNumber")).and_then(|v| v.as_u64()).unwrap_or(0);
+    // Missing flags (older CLI) must not fake an outage — default to online.
+    let remote_available = rev.and_then(|d| d.get("remoteAvailable")).map(json_truthy).unwrap_or(true);
+    let remote_authorized = rev.and_then(|d| d.get("remoteAuthorized")).map(json_truthy).unwrap_or(true);
 
     let files = events_with_tag(events, "repositoryStatusFile").into_iter().map(|d| {
         let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -98,7 +105,7 @@ fn status_from(events: &[LoreEvent]) -> StatusResultDto {
         }
     }).collect();
 
-    StatusResultDto { branch, local_ahead, remote_ahead, files }
+    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, remote_available, remote_authorized, files }
 }
 
 /// `flag*`/`is*` fields serialize as JSON booleans (via `u8_as_bool`); accept a
@@ -1198,6 +1205,31 @@ mod status_tests {
         let status = status_from(&events);
         assert!(!status.branch.is_empty());
         // Files may be empty for a clean clone; the parse must still succeed with a branch.
+    }
+
+    #[test]
+    fn parses_remote_flags() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionNumber":7,"revisionLocalNumber":7,"revisionRemoteNumber":7,"isLocalAhead":0,"isRemoteAhead":0,"remoteAvailable":0,"remoteAuthorized":1}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let s = status_from(&events);
+        assert_eq!(s.revision_number, 7);
+        assert!(!s.remote_available);
+        assert!(s.remote_authorized);
+    }
+
+    #[test]
+    fn missing_remote_flags_default_online() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":0,"isRemoteAhead":0}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let s = status_from(&events);
+        assert!(s.remote_available);
+        assert!(s.remote_authorized);
     }
 }
 
