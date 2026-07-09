@@ -18,6 +18,12 @@ const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 const IMAGE_EXTS: &[&str] =
     &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd"];
 
+const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
+
+pub(crate) fn is_model_ext(ext: &str) -> bool {
+    MODEL_EXTS.contains(&ext)
+}
+
 fn none() -> PreviewDto {
     PreviewDto { kind: "none".into(), data_url: None, width: None, height: None }
 }
@@ -178,6 +184,18 @@ pub async fn lore_preview(
             let _ = app.asset_protocol_scope().allow_file(&abs);
             return Ok(PreviewDto { kind: "audio".into(), data_url: None, width: None, height: None });
         }
+        if is_model_ext(&ext) {
+            if !abs.is_file() {
+                return Ok(none());
+            }
+            // The webview streams the model — and its sidecar .bin/textures for
+            // glTF/FBX — through the asset protocol.
+            let _ = app.asset_protocol_scope().allow_file(&abs);
+            if let Some(dir) = abs.parent() {
+                let _ = app.asset_protocol_scope().allow_directory(dir, false);
+            }
+            return Ok(PreviewDto { kind: "model".into(), data_url: None, width: None, height: None });
+        }
         let cache = app.path().app_cache_dir().ok().map(|d| d.join("thumbs"));
         Ok(image_preview(&abs, &ext, max_px, cache))
     })
@@ -227,6 +245,14 @@ mod tests {
         let d = dir("none");
         assert_eq!(image_preview(&d.join("x.customfmt"), "customfmt", 256, None).kind, "none");
         assert_eq!(image_preview(&d.join("gone.png"), "png", 256, None).kind, "none");
+    }
+
+    #[test]
+    fn model_extensions_classify() {
+        assert!(is_model_ext("fbx"));
+        assert!(is_model_ext("glb"));
+        assert!(!is_model_ext("wav"));
+        assert!(!is_model_ext("png"));
     }
 
     #[test]
