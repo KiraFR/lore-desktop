@@ -6,6 +6,7 @@ describe('isPreviewableImage', () => {
     expect(isPreviewableImage('Content/T_Rock.dds')).toBe(true)
     expect(isPreviewableImage('Content/UI/icon.PNG')).toBe(true)
     expect(isPreviewableImage('renders/beauty.exr')).toBe(true)
+    expect(isPreviewableImage('Content/Chars/hero.blend')).toBe(true)
   })
   it('rejects everything else', () => {
     expect(isPreviewableImage('Source/main.cpp')).toBe(false)

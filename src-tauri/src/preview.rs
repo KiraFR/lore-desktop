@@ -16,7 +16,7 @@ pub struct PreviewDto {
 
 const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 const IMAGE_EXTS: &[&str] =
-    &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd"];
+    &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend"];
 
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
 
@@ -102,8 +102,70 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "dds" => decode_dds(path),
         "psd" => decode_psd(path),
         "exr" | "hdr" => decode_hdr_like(path),
+        "blend" => decode_blend(path),
         _ => image::open(path).map(|d| d.to_rgba8()).map_err(|e| e.to_string()),
     }
+}
+
+/// The thumbnail Blender embeds at save time. The file may be zstd- (≥3.0) or
+/// gzip-compressed; no scene decoding, just the block stream.
+fn decode_blend(path: &Path) -> Result<image::RgbaImage, String> {
+    let raw = std::fs::read(path).map_err(|e| e.to_string())?;
+    let data: Vec<u8> = if raw.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+        zstd::decode_all(&raw[..]).map_err(|e| e.to_string())?
+    } else if raw.starts_with(&[0x1F, 0x8B]) {
+        use std::io::Read;
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out).map_err(|e| e.to_string())?;
+        out
+    } else {
+        raw
+    };
+    blend_thumbnail(&data).ok_or_else(|| "no embedded thumbnail".into())
+}
+
+/// Walk the .blend block stream and pull the `TEST` thumbnail:
+/// `i32 width, i32 height`, then w×h×4 RGBA stored bottom-up.
+fn blend_thumbnail(data: &[u8]) -> Option<image::RgbaImage> {
+    if data.len() < 12 || &data[..7] != b"BLENDER" {
+        return None;
+    }
+    let ptr = match data[7] {
+        b'_' => 4usize,
+        b'-' => 8,
+        _ => return None,
+    };
+    let little = data[8] == b'v';
+    let rd32 = |b: &[u8]| -> u32 {
+        let a = [b[0], b[1], b[2], b[3]];
+        if little { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) }
+    };
+    let mut o = 12usize;
+    while o + 4 + 4 + ptr + 8 <= data.len() {
+        let code = &data[o..o + 4];
+        let size = rd32(&data[o + 4..o + 8]) as usize;
+        let body = o + 4 + 4 + ptr + 4 + 4;
+        if code == b"ENDB" {
+            break;
+        }
+        if code == b"TEST" && size >= 8 && body + size <= data.len() {
+            let d = &data[body..body + size];
+            let w = rd32(&d[0..4]) as usize;
+            let h = rd32(&d[4..8]) as usize;
+            if w == 0 || h == 0 || 8 + w * h * 4 > size {
+                return None;
+            }
+            let px = &d[8..8 + w * h * 4];
+            // Stored bottom-up (OpenGL convention) — flip to top-down.
+            let mut rgba = Vec::with_capacity(px.len());
+            for row in (0..h).rev() {
+                rgba.extend_from_slice(&px[row * w * 4..(row + 1) * w * 4]);
+            }
+            return image::RgbaImage::from_raw(w as u32, h as u32, rgba);
+        }
+        o = body.checked_add(size)?;
+    }
+    None
 }
 
 /// Thumbnail cache key: absolute path + mtime + size + max_px, hex-encoded.
@@ -245,6 +307,65 @@ mod tests {
         let d = dir("none");
         assert_eq!(image_preview(&d.join("x.customfmt"), "customfmt", 256, None).kind, "none");
         assert_eq!(image_preview(&d.join("gone.png"), "png", 256, None).kind, "none");
+    }
+
+    /// Minimal synthetic .blend: header + one TEST block (2×2 RGBA) + ENDB.
+    fn synthetic_blend() -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"BLENDER-v300"); // 8-byte pointers, little-endian
+        let w: u32 = 2;
+        let h: u32 = 2;
+        // Rows bottom-up: bottom row RED, top row BLUE.
+        let bottom = [255u8, 0, 0, 255, 255, 0, 0, 255];
+        let top = [0u8, 0, 255, 255, 0, 0, 255, 255];
+        let mut body = Vec::new();
+        body.extend_from_slice(&w.to_le_bytes());
+        body.extend_from_slice(&h.to_le_bytes());
+        body.extend_from_slice(&bottom);
+        body.extend_from_slice(&top);
+        b.extend_from_slice(b"TEST");
+        b.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        b.extend_from_slice(&[0u8; 8]); // old pointer
+        b.extend_from_slice(&0u32.to_le_bytes()); // SDNA index
+        b.extend_from_slice(&1u32.to_le_bytes()); // count
+        b.extend_from_slice(&body);
+        b.extend_from_slice(b"ENDB");
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&[0u8; 8]);
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b
+    }
+
+    #[test]
+    fn blend_thumbnail_parses_and_flips() {
+        let img = blend_thumbnail(&synthetic_blend()).unwrap();
+        assert_eq!(img.dimensions(), (2, 2));
+        // Top-left pixel must be the (stored-last) BLUE top row after the flip.
+        assert_eq!(img.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        assert_eq!(img.get_pixel(0, 1).0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn blend_zstd_roundtrip_decodes() {
+        let d = dir("blendz");
+        let compressed = zstd::encode_all(&synthetic_blend()[..], 1).unwrap();
+        let p = d.join("scene.blend");
+        std::fs::write(&p, compressed).unwrap();
+        let out = image_preview(&p, "blend", 128, None);
+        assert_eq!(out.kind, "image");
+        assert_eq!((out.width, out.height), (Some(2), Some(2)));
+    }
+
+    #[test]
+    fn blend_without_thumbnail_is_none() {
+        let d = dir("blendn");
+        let p = d.join("empty.blend");
+        std::fs::write(&p, b"BLENDER-v300ENDB").unwrap();
+        assert_eq!(image_preview(&p, "blend", 128, None).kind, "none");
+        let bad = d.join("bad.blend");
+        std::fs::write(&bad, b"NOTABLEND").unwrap();
+        assert_eq!(image_preview(&bad, "blend", 128, None).kind, "none");
     }
 
     #[test]
