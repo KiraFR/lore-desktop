@@ -1,10 +1,12 @@
 <script lang="ts">
   import { repo, commit } from './repo.svelte'
+  import { composeCommitMessage } from './commitMessage'
   import Icon from './Icon.svelte'
 
   let { selectedPath, onselect }: { selectedPath: string | null; onselect: (p: string) => void } = $props()
 
   let message = $state('')
+  let description = $state('')
   let staged = $state(new Set<string>())
 
   const glyph: Record<string, { c: string; v: string }> = {
@@ -31,8 +33,9 @@
 
   async function doCommit() {
     const exclude = files.filter((f) => !staged.has(f.path)).map((f) => f.path)
-    await commit(message, exclude)
+    await commit(composeCommitMessage(message, description), exclude)
     message = ''
+    description = ''
   }
 </script>
 
@@ -70,7 +73,7 @@
 
   <div class="composer">
     <input bind:value={message} placeholder="Summary (required)" disabled={!!repo.busy} />
-    <textarea rows="2" placeholder="Description" disabled={!!repo.busy}></textarea>
+    <textarea rows="2" placeholder="Description" bind:value={description} disabled={!!repo.busy}></textarea>
     <button class="accent" onclick={doCommit} disabled={!!repo.busy || !message.trim() || stagedCount === 0}>
       {repo.busy === 'commit' ? 'Committing…' : `Commit to ${branch}`}
       {#if stagedCount > 0}<span class="cf">{stagedCount} {stagedCount === 1 ? 'file' : 'files'}</span>{/if}
