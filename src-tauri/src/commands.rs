@@ -369,6 +369,67 @@ pub async fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Resul
     .await
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentityDto {
+    pub id: String,
+    pub email: String,
+}
+
+/// First `authUserInfo { id, name }` event — `name` is the account email.
+fn identity_from(events: &[LoreEvent]) -> Option<IdentityDto> {
+    events_with_tag(events, "authUserInfo").into_iter().find_map(|d| {
+        let id = d.get("id").and_then(|v| v.as_str())?;
+        let email = d.get("name").and_then(|v| v.as_str())?;
+        Some(IdentityDto { id: id.to_string(), email: email.to_string() })
+    })
+}
+
+/// The signed-in identity as the repo's server knows it. `lore auth info`
+/// only answers inside a working copy (it needs the repo's auth endpoint),
+/// so there is no identity to show until a repository is open.
+#[tauri::command]
+pub async fn lore_identity(repo_path: String) -> Result<IdentityDto, String> {
+    blocking(move || {
+        let events = run_lore(&["auth", "info", "--repository", &repo_path])?;
+        identity_from(&events).ok_or_else(|| "no identity".to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn lore_sign_out() -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["auth", "logout"])?;
+        Ok(())
+    })
+    .await
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    #[test]
+    fn parses_auth_user_info() {
+        let sample = concat!(
+            r#"{"tagName":"authUserInfo","data":{"id":"8c25b13e","name":"jimmy@studio.dev"}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let id = identity_from(&events).unwrap();
+        assert_eq!(id.id, "8c25b13e");
+        assert_eq!(id.email, "jimmy@studio.dev");
+    }
+
+    #[test]
+    fn no_event_is_none() {
+        let events = parse_events(r#"{"tagName":"complete","data":{"status":0}}"#).unwrap();
+        assert!(identity_from(&events).is_none());
+    }
+}
+
 /// `lore lock` subcommand for a lock/unlock toggle.
 fn lock_subcommand(lock: bool) -> &'static str {
     if lock {
