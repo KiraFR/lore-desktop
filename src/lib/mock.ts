@@ -134,6 +134,14 @@ export const mock: LoreApi = {
     await delay(120)
     return 'C:/SoonerOrLater/picked-repo'
   },
+  async pickRepoFile(repoPath: string) {
+    await delay(120)
+    return `${repoPath}/Content/Environment/SM_Rock_02.uasset`
+  },
+  async getIdentity(_repoPath: string) {
+    await delay(100)
+    return { id: 'mock-user', email: 'jane.doe@studio.dev' }
+  },
   async cloneRepo(_serverUrl: string, _repoId: string, repoName: string, destParent: string) {
     await delay(600) // simulate the network + disk work
     return `${destParent}/${repoName}`
@@ -141,7 +149,11 @@ export const mock: LoreApi = {
   async getStatus(repoPath: string) {
     await delay(250)
     const s = stateFor(repoPath)
-    return { branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead, files: [...s.files] } as StatusResult
+    return {
+      branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,
+      revisionNumber: 5, remoteAvailable: true, remoteAuthorized: true,
+      files: [...s.files],
+    } as StatusResult
   },
   async getDiff(_repoPath: string, _path: string) {
     await delay(120)

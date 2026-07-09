@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, LockEntry, LoreApi, MergeConflict, MergePreview, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, MergeConflict, MergePreview, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -19,6 +19,12 @@ export const tauriApi: LoreApi = {
     const picked = await open({ directory: true, multiple: false })
     return typeof picked === 'string' ? picked : null
   },
+  pickRepoFile: async (repoPath) => {
+    const picked = await open({ directory: false, multiple: false, defaultPath: repoPath })
+    return typeof picked === 'string' ? picked : null
+  },
+  getIdentity: (repoPath) => invoke<Identity>('lore_identity', { repoPath }),
+  signOut: () => invoke<void>('lore_sign_out'),
   cloneRepo: (serverUrl, repoId, repoName, destParent) =>
     invoke<string>('lore_clone', { serverUrl, repoId, repoName, destParent }),
   loadConfig: () => invoke<AppConfig>('config_load'),

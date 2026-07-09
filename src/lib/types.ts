@@ -13,7 +13,18 @@ export interface StatusResult {
   branch: string
   localAhead: number
   remoteAhead: number
+  revisionNumber: number
+  /** False when the server can't be reached (offline). */
+  remoteAvailable: boolean
+  /** False when the stored session is no longer accepted. */
+  remoteAuthorized: boolean
   files: ChangedFile[]
+}
+
+export interface Identity {
+  id: string
+  /** The account email as the server knows it (authUserInfo.name). */
+  email: string
 }
 
 export interface RepoEntry {
@@ -70,6 +81,8 @@ export interface AppConfig {
   serverUrl: string | null
   currentRepo: string | null
   recentRepos: string[]
+  /** Optional user-chosen name shown in the avatar/menu; falls back to the email. */
+  displayName?: string | null
 }
 
 export interface HistoryPage {
@@ -92,6 +105,10 @@ export interface LoreApi {
   listRepos(serverUrl: string): Promise<RepoEntry[]>
   /** Native OS directory chooser; returns the absolute path or null if cancelled. */
   pickFolder(): Promise<string | null>
+  /** Native file chooser starting inside the repo; absolute path or null if cancelled. */
+  pickRepoFile(repoPath: string): Promise<string | null>
+  /** Identity per the current repo's server; rejects when no repo/no session. */
+  getIdentity(repoPath: string): Promise<Identity>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
