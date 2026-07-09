@@ -299,6 +299,27 @@ fn assign_lanes_by_branch(commits: &mut [CommitDto], branch_ids: &[String]) {
     }
 }
 
+/// End-of-history rule: a page shorter than requested means nothing older
+/// remains, so pagination must stop (`None`) instead of re-serving the tail.
+fn next_cursor_for(raw_len: usize, requested: u32, last_id: Option<String>) -> Option<String> {
+    if (raw_len as u32) < requested { None } else { last_id }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::next_cursor_for;
+
+    #[test]
+    fn short_page_ends_pagination() {
+        assert_eq!(next_cursor_for(3, 200, Some("x".into())), None);
+    }
+
+    #[test]
+    fn full_page_keeps_cursor() {
+        assert_eq!(next_cursor_for(200, 200, Some("x".into())), Some("x".into()));
+    }
+}
+
 #[tauri::command]
 pub async fn lore_history(repo_path: String, length: u32, cursor: Option<String>) -> Result<HistoryPage, String> {
     blocking(move || {
@@ -310,6 +331,7 @@ pub async fn lore_history(repo_path: String, length: u32, cursor: Option<String>
         }
         let events = run_lore(&args)?;
         let mut page = history_from(&events);
+        let raw_len = page.commits.len();
         // When paging, `--revision <cursor>` re-includes the cursor commit as the
         // first entry; drop it so pages don't overlap.
         if cursor.is_some() && !page.commits.is_empty() {
@@ -326,6 +348,7 @@ pub async fn lore_history(repo_path: String, length: u32, cursor: Option<String>
                 }
             }
         }
+        page.next_cursor = next_cursor_for(raw_len, length, page.next_cursor.take());
         Ok(page)
     })
     .await
