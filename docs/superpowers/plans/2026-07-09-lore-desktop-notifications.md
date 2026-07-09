@@ -12,7 +12,7 @@
 
 **Files:** Create `src-tauri/src/notifications.rs`; Modify `src-tauri/src/lib.rs`
 
-- [ ] **Step 1:** Create `src-tauri/src/notifications.rs`:
+- [x] **Step 1:** Create `src-tauri/src/notifications.rs`:
 
 ```rust
 use std::io::BufRead;
@@ -131,9 +131,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2:** `lib.rs` — `mod notifications;`, `.manage(notifications::NotifState::default())` before `.invoke_handler`, register `notifications::lore_notifications_start, notifications::lore_notifications_stop`.
+- [x] **Step 2:** `lib.rs` — `mod notifications;`, `.manage(notifications::NotifState::default())` before `.invoke_handler`, register `notifications::lore_notifications_start, notifications::lore_notifications_stop`.
 
-- [ ] **Step 3:** `cargo test` PASS → commit `feat(notifications): lore subscribe sidecar with auto-restart`.
+- [x] **Step 3:** `cargo test` PASS → commit `feat(notifications): lore subscribe sidecar with auto-restart`.
 
 ---
 
@@ -141,7 +141,7 @@ mod tests {
 
 **Files:** Create `src/lib/notifyRouting.ts`, `src/lib/notifyRouting.test.ts`, `src/lib/notifications.svelte.ts`; Modify `src/lib/types.ts`, `src/lib/tauri.ts`, `src/lib/mock.ts`, `src/App.svelte`
 
-- [ ] **Step 1 (TDD):** `notifyRouting.test.ts` — push par un autre ⇒ status+history+toast ; push par moi ⇒ pas de toast ; lock ⇒ locks seulement ; mix coalescé. Puis :
+- [x] **Step 1 (TDD):** `notifyRouting.test.ts` — push par un autre ⇒ status+history+toast ; push par moi ⇒ pas de toast ; lock ⇒ locks seulement ; mix coalescé. Puis :
 
 ```ts
 /** Pure routing for coalesced server notifications. */
@@ -168,14 +168,14 @@ export function planFor(events: LoreNotification[], myUserId: string | null): Re
 }
 ```
 
-- [ ] **Step 2:** types.ts — ré-exporter `LoreNotification` (import depuis notifyRouting) et ajouter à `LoreApi` :
+- [x] **Step 2:** types.ts — ré-exporter `LoreNotification` (import depuis notifyRouting) et ajouter à `LoreApi` :
 
 ```ts
   /** Live server events for the repo; resolves to a stop function. */
   startNotifications(repoPath: string, onEvent: (e: LoreNotification) => void): Promise<() => void>
 ```
 
-- [ ] **Step 3:** tauri.ts —
+- [x] **Step 3:** tauri.ts —
 
 ```ts
   startNotifications: async (repoPath, onEvent) => {
@@ -190,7 +190,7 @@ export function planFor(events: LoreNotification[], myUserId: string | null): Re
 
 (import `listen` from `@tauri-apps/api/event`.) — mock.ts : `async startNotifications() { return () => {} }`.
 
-- [ ] **Step 4:** `notifications.svelte.ts` :
+- [x] **Step 4:** `notifications.svelte.ts` :
 
 ```ts
 import { api } from './api'
@@ -234,7 +234,7 @@ function flush() {
 
 Toast : vérifier l'API de `toast.ts` (il y a `toastError`/`toastAction`) — ajouter si besoin un `toastInfo(title)` minimal (variant info sans action) dans toast.ts + test.
 
-- [ ] **Step 5:** App.svelte —
+- [x] **Step 5:** App.svelte —
 
 ```ts
   $effect(() => {
@@ -242,11 +242,11 @@ Toast : vérifier l'API de `toast.ts` (il y a `toastError`/`toastAction`) — aj
   })
 ```
 
-- [ ] **Step 6:** `npm run check && npm test` PASS → commit `feat(notifications): live status/locks/history refresh with teammate push toast`.
+- [x] **Step 6:** `npm run check && npm test` PASS → commit `feat(notifications): live status/locks/history refresh with teammate push toast`.
 
 ---
 
 ### Task 3: Vérification simulation d'équipe
 
-- [ ] App réelle ouverte sur `lore-test-repo`, **sans y toucher** : `lore lock acquire README.md` depuis le CLI → la StatusBar/vue Locks se met à jour seule (≤ ~1 s) ; `lore lock release` → idem. Commit + push CLI d'un fichier → badge Sync apparaît seul.
-- [ ] Suites complètes PASS ; commit fixes éventuels.
+- [x] App réelle ouverte sur `lore-test-repo`, **sans y toucher** : `lore lock acquire README.md` depuis le CLI → la StatusBar/vue Locks se met à jour seule (≤ ~1 s) ; `lore lock release` → idem. Commit + push CLI d'un fichier → badge Sync apparaît seul.
+- [x] Suites complètes PASS ; commit fixes éventuels.
