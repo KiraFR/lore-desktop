@@ -11,6 +11,8 @@ pub struct AppConfigDto {
     pub current_repo: Option<String>,
     #[serde(default)]
     pub recent_repos: Vec<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 /// Read + deserialize the config file. A missing file or any read/parse error
@@ -73,6 +75,7 @@ mod tests {
             server_url: Some("lore://host:41337".into()),
             current_repo: Some("C:/repos/game".into()),
             recent_repos: vec!["C:/repos/game".into(), "C:/repos/x".into()],
+            display_name: Some("Jimmy D.".into()),
         };
         save_config_to(&path, &cfg).unwrap();
         assert_eq!(load_config_from(&path), cfg);
