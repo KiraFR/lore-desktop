@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { api } from './api'
   import { session } from './session.svelte'
   import { repo, locks, refreshLocks, setLock } from './repo.svelte'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
 
   $effect(() => { session.config.currentRepo; refreshLocks() })
@@ -8,12 +10,41 @@
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
   const dir = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
   const iconFor = (p: string) => (/\.(uasset|umap|png|fbx|wav)$/i.test(p) ? 'image' : 'file')
+
+  let locking = $state(false)
+
+  /** Absolute picked path → repo-relative ('/'-separated), or null if outside the repo. */
+  function toRepoRelative(absPath: string, repoRoot: string): string | null {
+    const norm = (p: string) => p.replaceAll('\\', '/').replace(/\/+$/, '')
+    const abs = norm(absPath)
+    const root = norm(repoRoot)
+    if (!abs.toLowerCase().startsWith(root.toLowerCase() + '/')) return null
+    return abs.slice(root.length + 1)
+  }
+
+  async function lockNewFile() {
+    const root = session.config.currentRepo
+    if (!root || locking) return
+    const picked = await api.pickRepoFile(root)
+    if (!picked) return // cancelled
+    const rel = toRepoRelative(picked, root)
+    if (!rel) {
+      toastError('Not in this repository', new Error(picked))
+      return
+    }
+    locking = true
+    try {
+      await setLock(rel, true) // setLock toasts its own failures + refreshes
+    } finally {
+      locking = false
+    }
+  }
 </script>
 
 <div class="locks">
   <div class="lhead">
     <span class="title"><Icon name="lock" size={16} /> Locks <span class="count">{locks.list.length} held</span></span>
-    <button class="ghost">+ Lock a file…</button>
+    <button class="ghost" onclick={lockNewFile} disabled={locking || !!repo.busy}>{locking ? 'Locking…' : '+ Lock a file…'}</button>
   </div>
 
   {#if locks.list.length === 0}
