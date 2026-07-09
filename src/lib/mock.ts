@@ -339,6 +339,12 @@ export const mock: LoreApi = {
     await delay(300)
     mergeConflictState = []
   },
+  async revealPath(_absPath: string) {
+    // No OS shell in the browser — parity no-op.
+  },
+  async openPath(_absPath: string) {
+    // No OS shell in the browser — parity no-op.
+  },
   async loadConfig() {
     await delay(60)
     const raw = localStorage.getItem(CONFIG_KEY)

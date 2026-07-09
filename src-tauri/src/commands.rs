@@ -1715,3 +1715,105 @@ mod diff_tests {
         assert_eq!((lines[2].old_line, lines[2].new_line), (None, Some(2)));
     }
 }
+
+/// Spawn a command detached, hiding the console window on Windows. The exit
+/// status is deliberately not awaited — explorer.exe returns non-zero codes
+/// even on success, so spawning is the only meaningful check.
+fn spawn_detached(mut cmd: std::process::Command) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| format!("failed to launch: {e}"))
+}
+
+/// The single argument for Windows `explorer`: `/select,<path>` when the file
+/// exists, else its parent directory (e.g. a deleted change). Forward slashes
+/// are normalized — `/select,` silently fails on them.
+#[cfg(any(target_os = "windows", test))]
+fn reveal_arg_windows(path: &str, exists: bool) -> String {
+    let win = path.replace('/', "\\");
+    if exists {
+        return format!("/select,{win}");
+    }
+    std::path::Path::new(&win)
+        .parent()
+        .map(|d| d.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(win)
+}
+
+/// Open the system file manager with the file selected (falls back to the
+/// parent directory when the file is gone, e.g. a deleted change).
+#[tauri::command]
+pub fn os_reveal_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let exists = std::path::Path::new(&path).exists();
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(reveal_arg_windows(&path, exists));
+        spawn_detached(cmd)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg("-R").arg(&path);
+        spawn_detached(cmd)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let p = std::path::Path::new(&path);
+        let parent = p.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(parent);
+        spawn_detached(cmd)
+    }
+}
+
+/// Open the file with its default application.
+#[tauri::command]
+pub fn os_open_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let win = path.replace('/', "\\");
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/c", "start", "", &win]);
+        spawn_detached(cmd)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(&path);
+        spawn_detached(cmd)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(&path);
+        spawn_detached(cmd)
+    }
+}
+
+#[cfg(test)]
+mod reveal_arg_tests {
+    use super::reveal_arg_windows;
+
+    #[test]
+    fn existing_file_selects_with_backslashes() {
+        assert_eq!(
+            reveal_arg_windows("C:/repo/Content/T_Icon.png", true),
+            r"/select,C:\repo\Content\T_Icon.png"
+        );
+    }
+
+    #[test]
+    fn missing_file_falls_back_to_parent() {
+        assert_eq!(reveal_arg_windows("C:/repo/Docs/gone.md", false), r"C:\repo\Docs");
+    }
+
+    #[test]
+    fn missing_file_without_parent_keeps_path() {
+        assert_eq!(reveal_arg_windows("gone.md", false), "gone.md");
+    }
+}

@@ -57,6 +57,8 @@ pub fn run() {
         preview::lore_preview,
         notifications::lore_notifications_start,
         notifications::lore_notifications_stop,
+        commands::os_reveal_path,
+        commands::os_open_path,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

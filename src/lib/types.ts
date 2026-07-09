@@ -178,6 +178,10 @@ export interface LoreApi {
   /** Abort the in-progress merge. */
   mergeAbort(repoPath: string): Promise<void>
   getLocks(repoPath: string): Promise<LockEntry[]>
+  /** Show the file in the system file manager (parent dir if the file is gone). */
+  revealPath(absPath: string): Promise<void>
+  /** Open the file with its default application. */
+  openPath(absPath: string): Promise<void>
   loadConfig(): Promise<AppConfig>
   saveConfig(config: AppConfig): Promise<void>
 }

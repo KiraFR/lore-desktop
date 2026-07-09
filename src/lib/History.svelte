@@ -7,6 +7,7 @@
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
+  import ContextMenu from './ContextMenu.svelte'
   import type { CommitFile } from './types'
 
   // Commits + selection live in the shared `history` store so leaving and
@@ -183,6 +184,21 @@
     scrollTop = glistEl.scrollTop
     if (glistEl.scrollTop + glistEl.clientHeight > commits.length * ROW_H - viewH * 2) loadMoreHistory()
   }
+
+  let ctxMenu = $state<{ x: number; y: number; path: string } | null>(null)
+
+  function ctxItems(path: string) {
+    const abs = `${session.config.currentRepo}/${path}`
+    const wrap = (fn: () => void | Promise<void>) => async () => {
+      try { await fn() } catch (e) { toastError('Action failed', e) }
+    }
+    return [
+      { label: 'Reveal in File Explorer', icon: 'folder', run: wrap(() => api.revealPath(abs)) },
+      { label: 'Open file', icon: 'external', run: wrap(() => api.openPath(abs)) },
+      { label: 'Copy path', icon: 'file', run: wrap(() => navigator.clipboard.writeText(path)) },
+      { label: 'Copy full path', run: wrap(() => navigator.clipboard.writeText(abs)) },
+    ]
+  }
 </script>
 
 <section class="history">
@@ -260,7 +276,7 @@
       {:else}
         <ul class="fl">
           {#each detailFiles as f (f.path)}
-            <li><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
+            <li oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
           {/each}
         </ul>
       {/if}
@@ -268,6 +284,10 @@
       <div class="empty muted"><p>Select a commit.</p></div>
     {/if}
   </div>
+
+  {#if ctxMenu}
+    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.path)} onclose={() => (ctxMenu = null)} />
+  {/if}
 </section>
 
 <style>

@@ -5,6 +5,7 @@
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
+  import ContextMenu from './ContextMenu.svelte'
 
   $effect(() => { session.config.currentRepo; refreshLocks() })
 
@@ -45,6 +46,26 @@
       locking = false
     }
   }
+
+  let ctxMenu = $state<{ x: number; y: number; path: string } | null>(null)
+
+  function ctxItems(path: string) {
+    const l = locks.list.find((x) => x.path === path)
+    const abs = `${session.config.currentRepo}/${path}`
+    const wrap = (fn: () => void | Promise<void>) => async () => {
+      try { await fn() } catch (e) { toastError('Action failed', e) }
+    }
+    const items: { label: string; icon?: string; danger?: boolean; run: () => void }[] = [
+      { label: 'Reveal in File Explorer', icon: 'folder', run: wrap(() => api.revealPath(abs)) },
+      { label: 'Open file', icon: 'external', run: wrap(() => api.openPath(abs)) },
+      { label: 'Copy path', icon: 'file', run: wrap(() => navigator.clipboard.writeText(path)) },
+      { label: 'Copy full path', run: wrap(() => navigator.clipboard.writeText(abs)) },
+    ]
+    if (l?.holder === 'you') {
+      items.push({ label: 'Unlock', icon: 'lock', run: wrap(() => setLock(path, false)) })
+    }
+    return items
+  }
 </script>
 
 <div class="locks">
@@ -56,9 +77,10 @@
   {#if locks.list.length === 0}
     <div class="empty muted">No files are locked.</div>
   {:else}
-    <div class="list">
+    <div class="list" role="list">
       {#each locks.list as l (l.path)}
-        <div class="lrow">
+        <div class="lrow" role="listitem"
+             oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: l.path } }}>
           {#if listThumbs.get(l.path)}
             <img class="rowthumb" src={listThumbs.get(l.path)} alt="" />
           {:else}
@@ -75,6 +97,10 @@
         </div>
       {/each}
     </div>
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.path)} onclose={() => (ctxMenu = null)} />
   {/if}
 </div>
 

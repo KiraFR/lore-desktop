@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { repo, commit } from './repo.svelte'
+  import { api } from './api'
+  import { session } from './session.svelte'
+  import { repo, commit, setLock, discardFile } from './repo.svelte'
   import { composeCommitMessage } from './commitMessage'
   import { listThumbs, requestThumb } from './thumbs.svelte'
+  import { confirmAction } from './confirm'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
+  import ContextMenu from './ContextMenu.svelte'
 
   let { selectedPath, onselect }: { selectedPath: string | null; onselect: (p: string) => void } = $props()
 
@@ -46,6 +51,40 @@
     message = ''
     description = ''
   }
+
+  let ctxMenu = $state<{ x: number; y: number; path: string } | null>(null)
+
+  function ctxItems(path: string) {
+    const f = files.find((x) => x.path === path)
+    const abs = `${session.config.currentRepo}/${path}`
+    const wrap = (fn: () => void | Promise<void>) => async () => {
+      try { await fn() } catch (e) { toastError('Action failed', e) }
+    }
+    const items: { label: string; icon?: string; danger?: boolean; run: () => void }[] = []
+    if (f?.action !== 'delete') {
+      // A deleted file has no working copy to reveal or open.
+      items.push({ label: 'Reveal in File Explorer', icon: 'folder', run: wrap(() => api.revealPath(abs)) })
+      items.push({ label: 'Open file', icon: 'external', run: wrap(() => api.openPath(abs)) })
+    }
+    items.push({ label: 'Copy path', icon: 'file', run: wrap(() => navigator.clipboard.writeText(path)) })
+    items.push({ label: 'Copy full path', run: wrap(() => navigator.clipboard.writeText(abs)) })
+    if (f?.action !== 'delete') {
+      // No working copy to hold a lock on once the file is deleted.
+      if (f?.lockedBy === 'you') {
+        items.push({ label: 'Unlock', icon: 'lock', run: wrap(() => setLock(path, false)) })
+      } else if (!f?.lockedBy) {
+        items.push({ label: 'Lock', icon: 'lock', run: wrap(() => setLock(path, true)) })
+      }
+    }
+    items.push({
+      label: 'Discard changes…', icon: 'history', danger: true,
+      run: wrap(async () => {
+        const ok = await confirmAction(`Discard changes to ${path}? This can't be undone.`, 'Discard changes')
+        if (ok) discardFile(path)
+      }),
+    })
+    return items
+  }
 </script>
 
 <section class="changes">
@@ -63,7 +102,8 @@
     {:else}
       <ul>
         {#each shown as f (f.path)}
-          <li class="file" class:sel={f.path === selectedPath}>
+          <li class="file" class:sel={f.path === selectedPath}
+              oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
             <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
             <div class="rowmain" role="button" tabindex="0"
                  onclick={() => onselect(f.path)}
@@ -93,6 +133,10 @@
       {#if stagedCount > 0}<span class="cf">{stagedCount} {stagedCount === 1 ? 'file' : 'files'}</span>{/if}
     </button>
   </div>
+
+  {#if ctxMenu}
+    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.path)} onclose={() => (ctxMenu = null)} />
+  {/if}
 </section>
 
 <style>
