@@ -19,7 +19,7 @@
 **Files:**
 - Create: `src/lib/audioPeaks.ts`, `src/lib/audioPeaks.test.ts`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 `src/lib/audioPeaks.test.ts`:
 
@@ -68,9 +68,9 @@ describe('formatTime', () => {
 })
 ```
 
-- [ ] **Step 2: Run — FAIL (module missing)** — `npm test`
+- [x] **Step 2: Run — FAIL (module missing)** — `npm test`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/audioPeaks.ts`:
 
@@ -110,9 +110,9 @@ export function formatTime(seconds: number): string {
 }
 ```
 
-- [ ] **Step 4: Run — PASS** — `npm test`
+- [x] **Step 4: Run — PASS** — `npm test`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/audioPeaks.ts src/lib/audioPeaks.test.ts
@@ -127,7 +127,7 @@ git commit -m "feat(audio): peak computation and centisecond time helpers"
 - Create: `src/lib/AudioPlayer.svelte`
 - Modify: `src/lib/Icon.svelte` (icons play/pause/repeat/volume), `src/lib/FilePreview.svelte` (use the component), `src/lib/mock.ts` (sine-burst WAV)
 
-- [ ] **Step 1: Icons** — add to the `paths` record in `Icon.svelte`:
+- [x] **Step 1: Icons** — add to the `paths` record in `Icon.svelte`:
 
 ```ts
     play: 'M5 3l14 9-14 9V3z',
@@ -136,7 +136,7 @@ git commit -m "feat(audio): peak computation and centisecond time helpers"
     volume: 'M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07',
 ```
 
-- [ ] **Step 2: Create `src/lib/AudioPlayer.svelte`**
+- [x] **Step 2: Create `src/lib/AudioPlayer.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -288,7 +288,7 @@ git commit -m "feat(audio): peak computation and centisecond time helpers"
 </style>
 ```
 
-- [ ] **Step 3: FilePreview** — replace the audio branch:
+- [x] **Step 3: FilePreview** — replace the audio branch:
 
 ```svelte
         {#if preview?.kind === 'audio' && preview.url}
@@ -299,7 +299,7 @@ git commit -m "feat(audio): peak computation and centisecond time helpers"
 
 (import `AudioPlayer from './AudioPlayer.svelte'`; drop the now-unused `.audio` CSS rules.)
 
-- [ ] **Step 4: Mock WAV becomes a sine burst** — in `mock.ts`, replace `silentWavDataUrl` with:
+- [x] **Step 4: Mock WAV becomes a sine burst** — in `mock.ts`, replace `silentWavDataUrl` with:
 
 ```ts
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
@@ -324,7 +324,7 @@ export function mockWavDataUrl(): string {
 
 and update the `getPreview` audio branch to `url: mockWavDataUrl()`.
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 Run: `npm run check && npm test` — PASS.
 
@@ -337,10 +337,10 @@ git commit -m "feat(audio): themed waveform player - seek, loop, persisted volum
 
 ### Task 3: Verification
 
-- [ ] **Step 1: Suites** — `npm run check && npm test` PASS.
-- [ ] **Step 2: Mock (browser)** — sélectionner `Audio/sfx_hit.wav` : waveform en forme de burst, play/pause, seek au clic (temps bouge), Loop togglable, volume modifié + reload → persisté ; `T_Icon_Sword.png` inchangé.
-- [ ] **Step 3: Real app** — `Audio/sine_440.wav` : waveform du sinus (enveloppe plate), infos « 8 kHz · mono · 0:01.00 », lecture réelle streaming.
-- [ ] **Step 4: Commit fixes** if any.
+- [x] **Step 1: Suites** — `npm run check && npm test` PASS.
+- [x] **Step 2: Mock (browser)** — sélectionner `Audio/sfx_hit.wav` : waveform en forme de burst, play/pause, seek au clic (temps bouge), Loop togglable, volume modifié + reload → persisté ; `T_Icon_Sword.png` inchangé.
+- [x] **Step 3: Real app** — `Audio/sine_440.wav` : waveform du sinus (enveloppe plate), infos « 8 kHz · mono · 0:01.00 », lecture réelle streaming.
+- [x] **Step 4: Commit fixes** if any.
 
 ---
 
