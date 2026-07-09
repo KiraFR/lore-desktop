@@ -20,7 +20,7 @@
 - Create: `src-tauri/src/preview.rs`
 - Modify: `src-tauri/Cargo.toml` (deps + `protocol-asset` feature), `src-tauri/tauri.conf.json` (assetProtocol), `src-tauri/src/lib.rs` (mod + register), `src-tauri/src/commands.rs` (make `blocking` and `ext_of` `pub(crate)`; add `"gif"` to `BINARY_EXTS`)
 
-- [ ] **Step 1: Dependencies + config**
+- [x] **Step 1: Dependencies + config**
 
 Run: `cargo add --manifest-path src-tauri/Cargo.toml image ddsfile texture2ddecoder psd base64`
 Then in `src-tauri/Cargo.toml` set `tauri = { version = "2.11.3", features = ["protocol-asset"] }`.
@@ -34,13 +34,13 @@ In `tauri.conf.json`, `app.security` becomes:
     }
 ```
 
-- [ ] **Step 2: Small edits in `commands.rs`**
+- [x] **Step 2: Small edits in `commands.rs`**
 
 - `async fn blocking` → `pub(crate) async fn blocking`
 - `fn ext_of` → `pub(crate) fn ext_of`
 - Add `"gif",` to `BINARY_EXTS` (after `"webp"`).
 
-- [ ] **Step 3: Create `src-tauri/src/preview.rs`** (full code, incl. tests)
+- [x] **Step 3: Create `src-tauri/src/preview.rs`** (full code, incl. tests)
 
 ```rust
 use std::path::{Path, PathBuf};
@@ -279,11 +279,11 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Register**
+- [x] **Step 4: Register**
 
 `lib.rs`: add `mod preview;` line? No — modules live in `lib.rs` as `mod commands; mod config; mod lore;` → add `mod preview;` and register `preview::lore_preview,` in `generate_handler!`.
 
-- [ ] **Step 5: Run + commit**
+- [x] **Step 5: Run + commit**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml` — PASS (fix any dds/psd crate API drift the compiler flags).
 
@@ -299,7 +299,7 @@ git commit -m "feat(preview): thumbnail pipeline (tga/dds/exr/hdr/psd), disk cac
 **Files:**
 - Modify: `src/lib/types.ts`, `src/lib/tauri.ts`, `src/lib/mock.ts`, `src/lib/mock.test.ts`
 
-- [ ] **Step 1: Types**
+- [x] **Step 1: Types**
 
 `types.ts`:
 
@@ -316,7 +316,7 @@ export interface PreviewData {
 
 `LoreApi`: add `/** Working-copy visual/audio preview of a repo file. */ getPreview(repoPath: string, path: string): Promise<PreviewData>`.
 
-- [ ] **Step 2: tauri.ts**
+- [x] **Step 2: tauri.ts**
 
 Import `convertFileSrc` from `@tauri-apps/api/core` and `PreviewData` type; add:
 
@@ -331,7 +331,7 @@ Import `convertFileSrc` from `@tauri-apps/api/core` and `PreviewData` type; add:
   },
 ```
 
-- [ ] **Step 3: mock.ts** — runtime-generated fakes
+- [x] **Step 3: mock.ts** — runtime-generated fakes
 
 ```ts
 /** Minimal valid WAV (0.2 s of silence) so the mock audio player renders and plays. */
@@ -374,7 +374,7 @@ and the method:
   },
 ```
 
-- [ ] **Step 4: mock tests**
+- [x] **Step 4: mock tests**
 
 Append to `mock.test.ts`:
 
@@ -391,7 +391,7 @@ Append to `mock.test.ts`:
   })
 ```
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 Run: `npm run check && npm test` — PASS.
 
@@ -407,7 +407,7 @@ git commit -m "feat(api): getPreview with mock SVG/WAV parity"
 **Files:**
 - Modify: `src/lib/FilePreview.svelte`
 
-- [ ] **Step 1: Fetch state** — after the diff effect, same anti-race pattern:
+- [x] **Step 1: Fetch state** — after the diff effect, same anti-race pattern:
 
 ```ts
   let preview = $state<PreviewData | null>(null)
@@ -428,7 +428,7 @@ git commit -m "feat(api): getPreview with mock SVG/WAV parity"
 
 (import `PreviewData` type.)
 
-- [ ] **Step 2: Markup** — replace the binary branch content:
+- [x] **Step 2: Markup** — replace the binary branch content:
 
 ```svelte
       {#if file.isBinary}
@@ -462,7 +462,7 @@ git commit -m "feat(api): getPreview with mock SVG/WAV parity"
         {/if}
 ```
 
-- [ ] **Step 3: Meta row** — in the `<dl class="meta">`, after Size:
+- [x] **Step 3: Meta row** — in the `<dl class="meta">`, after Size:
 
 ```svelte
         {#if preview?.width && preview?.height}
@@ -470,7 +470,7 @@ git commit -m "feat(api): getPreview with mock SVG/WAV parity"
         {/if}
 ```
 
-- [ ] **Step 4: CSS additions**
+- [x] **Step 4: CSS additions**
 
 ```css
   .thumb.img { padding: 0; overflow: hidden; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
@@ -479,7 +479,7 @@ git commit -m "feat(api): getPreview with mock SVG/WAV parity"
   .audio audio { width: 100%; }
 ```
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 Run: `npm run check && npm test` — PASS.
 
@@ -492,10 +492,10 @@ git commit -m "feat(preview): working-copy image thumbnails, audio player, dimen
 
 ### Task 4: End-to-end verification
 
-- [ ] **Step 1: Suites** — `npm run check && npm test && cargo test --manifest-path src-tauri/Cargo.toml` all PASS.
-- [ ] **Step 2: Mock (browser)** — un fichier image des changes mock montre la vignette SVG damier + « Dimensions 2048 × 2048 » + la note server-support ; un `.wav` ajouté au mock seed montre le lecteur audio.
-- [ ] **Step 3: Real app** — générer un PNG + un WAV dans `lore-test-repo`, sélectionner dans Changes : vraie vignette (After) + dimensions ; lecteur audio fonctionnel ; re-sélection instantanée (cache) ; fichier `.cpp` → comportement inchangé.
-- [ ] **Step 4: Commit fixes** if any.
+- [x] **Step 1: Suites** — `npm run check && npm test && cargo test --manifest-path src-tauri/Cargo.toml` all PASS.
+- [x] **Step 2: Mock (browser)** — un fichier image des changes mock montre la vignette SVG damier + « Dimensions 2048 × 2048 » + la note server-support ; un `.wav` ajouté au mock seed montre le lecteur audio.
+- [x] **Step 3: Real app** — générer un PNG + un WAV dans `lore-test-repo`, sélectionner dans Changes : vraie vignette (After) + dimensions ; lecteur audio fonctionnel ; re-sélection instantanée (cache) ; fichier `.cpp` → comportement inchangé.
+- [x] **Step 4: Commit fixes** if any.
 
 ---
 
