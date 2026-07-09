@@ -5,6 +5,7 @@
   import { api } from './api'
   import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
+  import AudioPlayer from './AudioPlayer.svelte'
 
   let { file }: { file: ChangedFile | null } = $props()
 
@@ -110,7 +111,7 @@
 
       {#if file.isBinary}
         {#if preview?.kind === 'audio' && preview.url}
-          <div class="audio"><audio controls src={preview.url}></audio></div>
+          <AudioPlayer src={preview.url} name={baseName(file.path)} />
           <p class="note muted"><Icon name="info" size={14} /> Audio asset — plays the working copy.</p>
         {:else}
           <div class="cmp">
@@ -204,8 +205,6 @@
   .thumb.after { background: #33475f; }
   .thumb.img { padding: 0; overflow: hidden; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
   .thumb.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .audio { padding: 10px 0 2px; }
-  .audio audio { width: 100%; }
   figcaption { font-size: 11px; color: var(--text-muted); margin-top: 7px; text-align: center; }
   figcaption.aft { color: var(--accent-text); }
   .note { display: flex; align-items: center; gap: 7px; font-size: 11px; margin: 12px 0 4px; }

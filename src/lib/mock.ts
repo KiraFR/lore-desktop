@@ -1,8 +1,8 @@
 import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
-/** Minimal valid WAV (0.2 s of silence) so the mock audio player renders and plays. */
-export function silentWavDataUrl(): string {
-  const sampleRate = 8000, samples = 1600
+/** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
+export function mockWavDataUrl(): string {
+  const sampleRate = 8000, samples = 4000
   const buf = new ArrayBuffer(44 + samples * 2)
   const v = new DataView(buf)
   const w4 = (o: number, s: string) => { for (let i = 0; i < 4; i++) v.setUint8(o + i, s.charCodeAt(i)) }
@@ -10,6 +10,10 @@ export function silentWavDataUrl(): string {
   w4(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true)
   v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true)
   w4(36, 'data'); v.setUint32(40, samples * 2, true)
+  for (let i = 0; i < samples; i++) {
+    const env = Math.exp(-i / 1200)
+    v.setInt16(44 + i * 2, Math.round(Math.sin((2 * Math.PI * 440 * i) / sampleRate) * env * 20000), true)
+  }
   let bin = ''
   new Uint8Array(buf).forEach((b) => (bin += String.fromCharCode(b)))
   return `data:audio/wav;base64,${btoa(bin)}`
@@ -163,7 +167,7 @@ export const mock: LoreApi = {
   },
   async getPreview(_repoPath: string, path: string) {
     await delay(200)
-    if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: silentWavDataUrl() } as PreviewData
+    if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: mockWavDataUrl() } as PreviewData
     if (PREVIEW_IMAGE_RE.test(path)) {
       const name = path.split('/').pop() ?? path
       const svg =
