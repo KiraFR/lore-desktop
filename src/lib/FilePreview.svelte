@@ -257,8 +257,11 @@
   .thumb { height: 150px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); }
   .thumb.before { background: #2b2f35; }
   .thumb.after { background: #33475f; }
-  .thumb.img { padding: 0; overflow: hidden; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
-  .thumb.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* The box is a grid with auto rows, where a percentage height on the img
+     resolves as auto (335×335 in a 335×149 box, then clipped). Absolute
+     positioning sizes the img against the box itself instead. */
+  .thumb.img { padding: 0; overflow: hidden; position: relative; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
+  .thumb.img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   figcaption { font-size: 11px; color: var(--text-muted); margin-top: 7px; text-align: center; }
   figcaption.aft { color: var(--accent-text); }
   .note { display: flex; align-items: center; gap: 7px; font-size: 11px; margin: 12px 0 4px; }
