@@ -127,44 +127,89 @@ fn decode_blend(path: &Path) -> Result<image::RgbaImage, String> {
     blend_thumbnail(&data).ok_or_else(|| "no embedded thumbnail".into())
 }
 
-/// Walk the .blend block stream and pull the `TEST` thumbnail:
-/// `i32 width, i32 height`, then w×h×4 RGBA stored bottom-up.
-fn blend_thumbnail(data: &[u8]) -> Option<image::RgbaImage> {
+/// Parsed .blend file header: where blocks start and how they are laid out.
+struct BlendHeader {
+    blocks_start: usize,
+    ptr: usize,
+    little: bool,
+    /// 0 = classic 12-byte header blocks (code, i32 len, ptr old, i32 sdna, i32 nr);
+    /// 1 = Blender 5 large blocks (code, i32 sdna, u64 old, u64 len, u64 nr).
+    format: u8,
+}
+
+/// Both .blend header generations:
+/// - classic (≤ 4.x): `BLENDER` + `_`/`-` + `v`/`V` + 3-digit version (12 bytes);
+/// - Blender 5+:      `BLENDER` + 2-digit header size + `_`/`-` + 2-digit block
+///   format + `v`/`V` + 4-digit version (e.g. `BLENDER17-01v0501`).
+fn blend_header(data: &[u8]) -> Option<BlendHeader> {
     if data.len() < 12 || &data[..7] != b"BLENDER" {
         return None;
     }
-    let ptr = match data[7] {
-        b'_' => 4usize,
-        b'-' => 8,
-        _ => return None,
+    let ptr_char = |c: u8| match c {
+        b'_' => Some(4usize),
+        b'-' => Some(8),
+        _ => None,
     };
-    let little = data[8] == b'v';
+    if data[7].is_ascii_digit() {
+        // New-style header: its own size is encoded right after the magic.
+        if !data[8].is_ascii_digit() || !data[10].is_ascii_digit() || !data[11].is_ascii_digit() {
+            return None;
+        }
+        let size = ((data[7] - b'0') as usize) * 10 + ((data[8] - b'0') as usize);
+        if size < 13 || data.len() < size {
+            return None;
+        }
+        let format = (data[10] - b'0') * 10 + (data[11] - b'0');
+        Some(BlendHeader { blocks_start: size, ptr: ptr_char(data[9])?, little: data[12] == b'v', format })
+    } else {
+        Some(BlendHeader { blocks_start: 12, ptr: ptr_char(data[7])?, little: data[8] == b'v', format: 0 })
+    }
+}
+
+/// Walk the .blend block stream and pull the `TEST` thumbnail:
+/// `i32 width, i32 height`, then w×h×4 RGBA stored bottom-up.
+fn blend_thumbnail(data: &[u8]) -> Option<image::RgbaImage> {
+    let h = blend_header(data)?;
     let rd32 = |b: &[u8]| -> u32 {
         let a = [b[0], b[1], b[2], b[3]];
-        if little { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) }
+        if h.little { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) }
     };
-    let mut o = 12usize;
-    while o + 4 + 4 + ptr + 8 <= data.len() {
+    let rd64 = |b: &[u8]| -> u64 {
+        let a = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
+        if h.little { u64::from_le_bytes(a) } else { u64::from_be_bytes(a) }
+    };
+    // Per-format block header: (total header size, offset of len field, len width).
+    let (head_len, len_at, len_w) = match h.format {
+        0 => (4 + 4 + h.ptr + 4 + 4, 4usize, 4usize),
+        1 => (4 + 4 + 8 + 8 + 8, 16, 8),
+        _ => return None,
+    };
+    let mut o = h.blocks_start;
+    while o + head_len <= data.len() {
         let code = &data[o..o + 4];
-        let size = rd32(&data[o + 4..o + 8]) as usize;
-        let body = o + 4 + 4 + ptr + 4 + 4;
         if code == b"ENDB" {
             break;
         }
+        let size = if len_w == 4 {
+            rd32(&data[o + len_at..o + len_at + 4]) as usize
+        } else {
+            usize::try_from(rd64(&data[o + len_at..o + len_at + 8])).ok()?
+        };
+        let body = o + head_len;
         if code == b"TEST" && size >= 8 && body + size <= data.len() {
             let d = &data[body..body + size];
             let w = rd32(&d[0..4]) as usize;
-            let h = rd32(&d[4..8]) as usize;
-            if w == 0 || h == 0 || 8 + w * h * 4 > size {
+            let hh = rd32(&d[4..8]) as usize;
+            if w == 0 || hh == 0 || 8 + w * hh * 4 > size {
                 return None;
             }
-            let px = &d[8..8 + w * h * 4];
+            let px = &d[8..8 + w * hh * 4];
             // Stored bottom-up (OpenGL convention) — flip to top-down.
             let mut rgba = Vec::with_capacity(px.len());
-            for row in (0..h).rev() {
+            for row in (0..hh).rev() {
                 rgba.extend_from_slice(&px[row * w * 4..(row + 1) * w * 4]);
             }
-            return image::RgbaImage::from_raw(w as u32, h as u32, rgba);
+            return image::RgbaImage::from_raw(w as u32, hh as u32, rgba);
         }
         o = body.checked_add(size)?;
     }
@@ -560,6 +605,41 @@ mod tests {
         let img = blend_thumbnail(&synthetic_blend()).unwrap();
         assert_eq!(img.dimensions(), (2, 2));
         // Top-left pixel must be the (stored-last) BLUE top row after the flip.
+        assert_eq!(img.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        assert_eq!(img.get_pixel(0, 1).0, [255, 0, 0, 255]);
+    }
+
+    /// Blender 5 layout: 17-byte header + 32-byte large block headers
+    /// (code i32, sdna i32, old u64, len u64, nr u64), observed on real 5.0 saves.
+    fn synthetic_blend_v5() -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"BLENDER17-01v0501");
+        let w: u32 = 2;
+        let h: u32 = 2;
+        let bottom = [255u8, 0, 0, 255, 255, 0, 0, 255];
+        let top = [0u8, 0, 255, 255, 0, 0, 255, 255];
+        let mut body = Vec::new();
+        body.extend_from_slice(&w.to_le_bytes());
+        body.extend_from_slice(&h.to_le_bytes());
+        body.extend_from_slice(&bottom);
+        body.extend_from_slice(&top);
+        let block = |out: &mut Vec<u8>, code: &[u8; 4], data: &[u8]| {
+            out.extend_from_slice(code);
+            out.extend_from_slice(&0u32.to_le_bytes()); // SDNA index
+            out.extend_from_slice(&0u64.to_le_bytes()); // old pointer
+            out.extend_from_slice(&(data.len() as u64).to_le_bytes());
+            out.extend_from_slice(&1u64.to_le_bytes()); // count
+            out.extend_from_slice(data);
+        };
+        block(&mut b, b"TEST", &body);
+        block(&mut b, b"ENDB", &[]);
+        b
+    }
+
+    #[test]
+    fn blend_v5_large_blocks_parse_and_flip() {
+        let img = blend_thumbnail(&synthetic_blend_v5()).unwrap();
+        assert_eq!(img.dimensions(), (2, 2));
         assert_eq!(img.get_pixel(0, 0).0, [0, 0, 255, 255]);
         assert_eq!(img.get_pixel(0, 1).0, [255, 0, 0, 255]);
     }
