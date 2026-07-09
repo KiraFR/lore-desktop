@@ -182,7 +182,7 @@
                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); history.selectedId = c.id } }}>
               {#if c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
               <span class="ava" style="background:{av.bg};color:{av.fg}" title={c.author}>{av.initials}</span>
-              <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub">{shortName(c.author)} · {c.when}</span></span>
+              <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub" title={new Date(c.whenMs).toLocaleString()}>{shortName(c.author)} · {c.when}</span></span>
             </div>
           {/each}
         </div>
@@ -195,7 +195,7 @@
       {@const av = avatar(selected.author)}
       <header class="dh">
         <span class="ava lg" style="background:{av.bg};color:{av.fg}" title={selected.author}>{av.initials}</span>
-        <div><div class="dwho">{shortName(selected.author)}</div><div class="rev">{selected.when} · #{selected.rev} · {selected.id}</div></div>
+        <div><div class="dwho">{shortName(selected.author)}</div><div class="rev" title={new Date(selected.whenMs).toLocaleString()}>{selected.when} · #{selected.rev} · {selected.id}</div></div>
         {#if canUndo}
           <button class="undo" onclick={doUndo} disabled={!!repo.busy} title="Undo this commit — its changes go back to Changes">
             <Icon name="history" size={13} /> Undo commit

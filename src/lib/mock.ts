@@ -60,6 +60,7 @@ function buildBigHistory(n: number): Commit[] {
     const nf = 1 + ((i * 3) % 3)
     return {
       id: id(i), rev: n - i, lane, parents, head, message, author: a[0], when: whenFor(i),
+      whenMs: Date.now() - i * 12 * 60_000, // plausible spacing; the labels above stay approximate
       files: Array.from({ length: nf }, (_, k) => fileFor(i, k)),
     }
   }

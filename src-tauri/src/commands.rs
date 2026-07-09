@@ -238,6 +238,8 @@ pub struct CommitDto {
     pub message: String,
     pub author: String,
     pub when: String,
+    /// Absolute epoch-ms, for the UI's exact-date tooltip.
+    pub when_ms: u64,
     pub lane: u64,           // Slice A: 0 for all (linear); real lane layout is a follow-up
     pub parents: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -275,10 +277,68 @@ fn relative_time(ms: u64) -> String {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(ms);
     let secs = now.saturating_sub(ms) / 1000;
+    const DAY: u64 = 86_400;
     if secs < 60 { "just now".to_string() }
     else if secs < 3600 { format!("{} min ago", secs / 60) }
-    else if secs < 86_400 { format!("{} hours ago", secs / 3600) }
-    else { format!("{} days ago", secs / 86_400) }
+    else if secs < DAY { format!("{} hours ago", secs / 3600) }
+    else if secs < 30 * DAY { format!("{} days ago", secs / DAY) }
+    else if secs < 365 * DAY { format!("{} months ago", secs / (30 * DAY)) }
+    else { format!("{} years ago", secs / (365 * DAY)) }
+}
+
+#[cfg(test)]
+mod relative_time_tests {
+    use super::relative_time;
+
+    /// Epoch-ms `secs` seconds before now (the function reads the clock).
+    fn ms_ago(secs: u64) -> u64 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        now - secs * 1000
+    }
+
+    #[test]
+    fn under_a_minute_is_just_now() {
+        assert_eq!(relative_time(ms_ago(5)), "just now");
+        assert_eq!(relative_time(ms_ago(59)), "just now");
+    }
+
+    #[test]
+    fn minutes_under_an_hour() {
+        assert_eq!(relative_time(ms_ago(60)), "1 min ago");
+        assert_eq!(relative_time(ms_ago(59 * 60)), "59 min ago");
+    }
+
+    #[test]
+    fn hours_under_a_day() {
+        assert_eq!(relative_time(ms_ago(3600)), "1 hours ago");
+        assert_eq!(relative_time(ms_ago(23 * 3600)), "23 hours ago");
+    }
+
+    #[test]
+    fn days_under_thirty() {
+        assert_eq!(relative_time(ms_ago(86_400)), "1 days ago");
+        assert_eq!(relative_time(ms_ago(29 * 86_400)), "29 days ago");
+    }
+
+    #[test]
+    fn months_under_a_year() {
+        assert_eq!(relative_time(ms_ago(30 * 86_400)), "1 months ago");
+        assert_eq!(relative_time(ms_ago(360 * 86_400)), "12 months ago");
+    }
+
+    #[test]
+    fn years_beyond() {
+        assert_eq!(relative_time(ms_ago(365 * 86_400)), "1 years ago");
+        assert_eq!(relative_time(ms_ago(2 * 365 * 86_400)), "2 years ago");
+    }
+
+    #[test]
+    fn future_timestamp_clamps_to_just_now() {
+        assert_eq!(relative_time(ms_ago(0) + 60_000), "just now");
+    }
 }
 
 /// Walk the stream: each `revisionHistoryEntry` starts a commit; the following
@@ -313,7 +373,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
                 commits.push(CommitDto {
                     id, rev, parents, head: None,
                     message: String::new(), author: String::new(), when: String::new(),
-                    lane: 0, files: Vec::new(),
+                    when_ms: 0, lane: 0, files: Vec::new(),
                 });
                 author_ids.push(String::new());
                 when_ms.push(0);
@@ -339,6 +399,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
     for (i, c) in commits.iter_mut().enumerate() {
         c.author = users.get(&author_ids[i]).cloned().unwrap_or_else(|| author_ids[i].clone());
         c.when = relative_time(when_ms[i]);
+        c.when_ms = when_ms[i];
     }
     assign_lanes_by_branch(&mut commits, &branch_ids);
 
@@ -1469,6 +1530,7 @@ mod history_tests {
         assert_eq!(page.commits[0].rev, 2);
         assert_eq!(page.commits[0].message, "Add lib.rs and update main");
         assert_eq!(page.commits[0].author, "jimmy@example.com");
+        assert!(page.commits[0].when_ms > 0);
         assert_eq!(page.commits[0].parents.len(), 1); // rev 2 → one real parent (rev 1)
         assert!(page.commits[1].parents.is_empty());   // rev 1 is the root
         assert!(page.next_cursor.is_some());

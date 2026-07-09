@@ -69,6 +69,7 @@ export interface Commit {
   message: string
   author: string    // display name; 'you' for the current user
   when: string      // relative time (mock-provided; real backend gives a timestamp)
+  whenMs: number    // absolute epoch-ms, for the exact-date tooltip
   lane: number      // graph column (0 = mainline)
   parents: string[] // parent commit ids (2+ ⇒ a merge)
   head?: string     // branch-head label at this commit, e.g. 'main'
