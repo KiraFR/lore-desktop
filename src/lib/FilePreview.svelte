@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChangedFile, DiffLine, PreviewData } from './types'
+  import type { ChangedFile, DiffLine, FileRevision, PreviewData } from './types'
   import { repo, setLock, discardFile } from './repo.svelte'
   import { session } from './session.svelte'
   import { api } from './api'
@@ -54,6 +54,33 @@
       .then((p) => { if (file?.path === f.path) preview = p })
       .catch(() => { if (file?.path === f.path) preview = null })
   })
+
+  // Per-asset revision timeline, fetched lazily on selection (anti-race).
+  let fileHistory = $state<FileRevision[]>([])
+  let fhLoading = $state(false)
+  let fhError = $state(false)
+  let lastFhPath = ''
+
+  $effect(() => {
+    const f = file
+    const repoPath = session.config.currentRepo
+    if (!f || !repoPath) { fileHistory = []; fhLoading = false; fhError = false; lastFhPath = ''; return }
+    const same = f.path === lastFhPath
+    lastFhPath = f.path
+    if (!same) { fileHistory = []; fhLoading = true }
+    fhError = false
+    api.getFileHistory(repoPath, f.path)
+      .then((revs) => { if (file?.path === f.path) fileHistory = revs })
+      .catch(() => { if (file?.path === f.path) fhError = true })
+      .finally(() => { if (file?.path === f.path) fhLoading = false })
+  })
+
+  const glyph: Record<string, { c: string; v: string }> = {
+    add: { c: 'added', v: '+' }, modify: { c: 'modified', v: '~' }, delete: { c: 'deleted', v: '−' },
+    move: { c: 'modified', v: 'R' }, copy: { c: 'modified', v: 'C' },
+  }
+  const authorLabel = (a: string) =>
+    a === session.identity?.email ? 'you' : a.includes('@') ? a.split('@')[0] : a.slice(0, 8)
 
   const KB = 1024, MB = 1024 * 1024
   function fmtSize(n: number): string {
@@ -182,6 +209,29 @@
           </dd>
         </div>
       </dl>
+
+      <div class="fhhead">History{#if fileHistory.length} · {fileHistory.length} {fileHistory.length === 1 ? 'revision' : 'revisions'}{/if}</div>
+      {#if fhLoading}
+        <p class="fhnote muted">Loading history…</p>
+      {:else if fhError}
+        <p class="fhnote muted">Couldn't load file history.</p>
+      {:else if fileHistory.length === 0}
+        <p class="fhnote muted">No committed revisions yet.</p>
+      {:else}
+        <ul class="fhl">
+          {#each fileHistory.slice(0, 30) as r (r.revision)}
+            <li>
+              <span class="tag {glyph[r.action]?.c}">{glyph[r.action]?.v ?? '?'}</span>
+              <span class="frev">#{r.revisionNumber}</span>
+              <span class="fmsg" title={r.message}>{r.message}</span>
+              <span class="fwho">{authorLabel(r.author)}</span>
+              <span class="fwhen" title={new Date(r.whenMs).toLocaleString()}>{r.when}</span>
+              <span class="fsize">{fmtSize(r.size)}</span>
+            </li>
+          {/each}
+        </ul>
+        {#if fileHistory.length > 30}<p class="fhnote muted">…and {fileHistory.length - 30} more revisions</p>{/if}
+      {/if}
     </div>
   {/if}
 </div>
@@ -233,4 +283,15 @@
   .lockrow { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-text); }
   .lockrow.other { color: var(--text-muted); }
   .mini { padding: 3px 10px; font-size: 11px; }
+  .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
+  .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }
+  .fhhead { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 20px 0 6px; }
+  .fhnote { font-size: 12px; margin: 4px 0; }
+  .fhl { list-style: none; margin: 0; padding: 0; }
+  .fhl li { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+  .frev { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: none; min-width: 28px; }
+  .fmsg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fwho { flex: none; font-size: 11px; color: var(--accent-text); }
+  .fwhen { flex: none; font-size: 11px; color: var(--text-dim); }
+  .fsize { flex: none; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); min-width: 58px; text-align: right; }
 </style>

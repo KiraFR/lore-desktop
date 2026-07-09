@@ -33,6 +33,20 @@ export interface PreviewData {
   height?: number
 }
 
+export interface FileRevision {
+  revision: string
+  revisionNumber: number
+  action: 'add' | 'modify' | 'delete' | 'move' | 'copy'
+  size: number
+  message: string
+  /** Email (resolved) or raw user id; the 'you' mapping is UI-side. */
+  author: string
+  /** Relative time. */
+  when: string
+  /** Absolute epoch-ms, for the tooltip. */
+  whenMs: number
+}
+
 export interface Identity {
   id: string
   /** The account email as the server knows it (authUserInfo.name). */
@@ -122,6 +136,8 @@ export interface LoreApi {
   getPreview(repoPath: string, path: string, maxPx?: number): Promise<PreviewData>
   /** Live server events for the repo; resolves to a stop function. */
   startNotifications(repoPath: string, onEvent: (e: LoreNotification) => void): Promise<() => void>
+  /** Revision timeline of one file (newest first). */
+  getFileHistory(repoPath: string, path: string): Promise<FileRevision[]>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>

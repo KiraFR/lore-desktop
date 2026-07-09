@@ -2,7 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -25,6 +25,7 @@ export const tauriApi: LoreApi = {
     return typeof picked === 'string' ? picked : null
   },
   getIdentity: (repoPath) => invoke<Identity>('lore_identity', { repoPath }),
+  getFileHistory: (repoPath, path) => invoke<FileRevision[]>('lore_file_history', { repoPath, path }),
   signOut: () => invoke<void>('lore_sign_out'),
   startNotifications: async (repoPath, onEvent) => {
     const unlisten = await listen<LoreNotification>('lore://notification', (e) => onEvent(e.payload))

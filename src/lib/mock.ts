@@ -1,5 +1,5 @@
 import { isPreviewableImage } from './previewKind'
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
 export function mockWavDataUrl(): string {
@@ -171,6 +171,15 @@ export const mock: LoreApi = {
   async startNotifications() {
     // No simulated team noise in dev — the real flow is exercised in Tauri.
     return () => {}
+  },
+  async getFileHistory(_repoPath: string, path: string) {
+    await delay(220)
+    const name = path.split('/').pop() ?? path
+    return [
+      { revision: 'fh3', revisionNumber: 5, action: 'modify', size: 2359296, message: 'Rebalance lighting pass', author: 'jane.doe@studio.dev', when: '2 hours ago', whenMs: Date.now() - 7_200_000 },
+      { revision: 'fh2', revisionNumber: 3, action: 'modify', size: 2100480, message: 'First blockout', author: 'maya.r@studio.dev', when: '3 days ago', whenMs: Date.now() - 259_200_000 },
+      { revision: 'fh1', revisionNumber: 1, action: 'add', size: 1848000, message: `Import ${name}`, author: 'maya.r@studio.dev', when: 'last week', whenMs: Date.now() - 604_800_000 },
+    ] as FileRevision[]
   },
   async getPreview(_repoPath: string, path: string) {
     await delay(200)
