@@ -1,5 +1,6 @@
 import { api } from './api'
 import { toastError } from './toast'
+import { promoteRepo, removeRepoPath, nextCurrentRepo } from './repoList'
 import type { AppConfig } from './types'
 
 /** The studio's Lore server; used as the default when no server is stored yet. */
@@ -14,10 +15,16 @@ export const session = $state({
 
 export async function bootstrap() {
   try {
-    const config = await api.loadConfig()
+    let config = await api.loadConfig()
     // A signed-in user shouldn't have to re-pick a server; default it when the
     // stored config has none so we go straight to the repo picker.
-    session.config = config.serverUrl ? config : { ...config, serverUrl: DEFAULT_SERVER_URL }
+    if (!config.serverUrl) config = { ...config, serverUrl: DEFAULT_SERVER_URL }
+    // Older configs set currentRepo without ever populating recentRepos; make
+    // sure the open repo always appears in the known-repos list.
+    if (config.currentRepo && !config.recentRepos.includes(config.currentRepo)) {
+      config = { ...config, recentRepos: promoteRepo(config.recentRepos, config.currentRepo) }
+    }
+    session.config = config
     session.signedIn = await api.isAuthenticated()
   } catch (e) {
     toastError('Startup failed', e)
@@ -32,9 +39,24 @@ export async function setSignedIn(serverUrl: string) {
   session.signedIn = true
 }
 
+/** Switch to (or add) a repo: set it current and move it to the front of the known list. */
 export async function selectRepo(repoPath: string) {
-  const recent = [repoPath, ...session.config.recentRepos.filter((r) => r !== repoPath)].slice(0, 10)
-  session.config = { ...session.config, currentRepo: repoPath, recentRepos: recent }
+  session.config = {
+    ...session.config,
+    currentRepo: repoPath,
+    recentRepos: promoteRepo(session.config.recentRepos, repoPath),
+  }
+  await api.saveConfig(session.config)
+}
+
+/** Forget a repo (files stay on disk). If it was current, fall back to the next most recent. */
+export async function removeRepo(repoPath: string) {
+  const recent = removeRepoPath(session.config.recentRepos, repoPath)
+  session.config = {
+    ...session.config,
+    currentRepo: nextCurrentRepo(session.config.currentRepo, repoPath, recent),
+    recentRepos: recent,
+  }
   await api.saveConfig(session.config)
 }
 
