@@ -1,15 +1,26 @@
 <script lang="ts">
-  import { session, clearCurrentRepo, signOut } from './session.svelte'
+  import { session, signOut } from './session.svelte'
   import { repo, sync, push } from './repo.svelte'
   import Icon from './Icon.svelte'
   import BranchMenu from './BranchMenu.svelte'
+  import RepoSwitcher from './RepoSwitcher.svelte'
 
   const repoName = $derived(session.config.currentRepo?.split(/[\\/]/).pop() || 'Select a repository')
   const initials = 'JD'
+  let repoOpen = $state(false)
+  let repoZoneEl = $state<HTMLDivElement>()
   let menuOpen = $state(false)
   let zoneEl = $state<HTMLDivElement>()
 
-  // Close the branch menu when clicking anywhere outside its zone (button + popover).
+  // Close a menu when clicking anywhere outside its zone (button + popover).
+  $effect(() => {
+    if (!repoOpen) return
+    function onDoc(e: PointerEvent) {
+      if (repoZoneEl && !repoZoneEl.contains(e.target as Node)) repoOpen = false
+    }
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
+  })
   $effect(() => {
     if (!menuOpen) return
     function onDoc(e: PointerEvent) {
@@ -21,11 +32,14 @@
 </script>
 
 <header class="titlebar">
-  <button class="zone" onclick={clearCurrentRepo} title="Switch repository">
-    <Icon name="folder" size={16} />
-    <div class="lbl"><span class="cap">Current repository</span><span class="val">{repoName}</span></div>
-    <Icon name="chevronDown" size={14} />
-  </button>
+  <div class="repozone" bind:this={repoZoneEl}>
+    <button class="zone" class:open={repoOpen} onclick={() => (repoOpen = !repoOpen)} title="Switch repository">
+      <Icon name="folder" size={16} />
+      <div class="lbl"><span class="cap">Current repository</span><span class="val">{repoName}</span></div>
+      <Icon name={repoOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+    </button>
+    {#if repoOpen}<RepoSwitcher onclose={() => (repoOpen = false)} />{/if}
+  </div>
 
   {#if session.config.currentRepo}
     <div class="branchzone" bind:this={zoneEl}>
@@ -60,6 +74,7 @@
   .titlebar { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 10px; background: var(--bg-elev); border-bottom: 1px solid var(--border); position: relative; z-index: 20; }
   .zone { display: flex; align-items: center; gap: 8px; height: 34px; max-width: 220px; }
   .zone.open { background: var(--accent-soft); border-color: var(--accent); }
+  .repozone { position: relative; }
   .branchzone { position: relative; }
   .lbl { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; text-align: left; }
   .cap { font-size: 10.5px; color: var(--text-muted); }

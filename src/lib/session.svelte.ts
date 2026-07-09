@@ -60,11 +60,6 @@ export async function removeRepo(repoPath: string) {
   await api.saveConfig(session.config)
 }
 
-export async function clearCurrentRepo() {
-  session.config = { ...session.config, currentRepo: null }
-  await api.saveConfig(session.config)
-}
-
 export async function signOut() {
   await api.signOut()
   session.signedIn = false
