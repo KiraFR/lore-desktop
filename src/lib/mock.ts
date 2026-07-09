@@ -87,6 +87,8 @@ function seedFiles(): ChangedFile[] {
     { path: 'Content/Maps/Level_01.umap', action: 'modify', isBinary: true, size: 2359296, oldSize: 2100480, lockedBy: 'you' },
     { path: 'Content/Characters/Hero/SK_Hero.uasset', action: 'add', isBinary: true, size: 4718592 },
     { path: 'Content/Environment/T_Cliff_D.uasset', action: 'modify', isBinary: true, size: 4404019, oldSize: 4093640, lockedBy: 'Maya R' },
+    { path: 'Content/UI/T_Icon_Sword.png', action: 'modify', isBinary: true, size: 182044, oldSize: 175200 },
+    { path: 'Audio/sfx_hit.wav', action: 'add', isBinary: true, size: 912384 },
     { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241, oldSize: 7980 },
     { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204, oldSize: 1180 },
     { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512, oldSize: 500 },
