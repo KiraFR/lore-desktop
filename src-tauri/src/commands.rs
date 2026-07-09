@@ -2,7 +2,7 @@ use crate::lore::{events_with_tag, run_lore, LoreEvent};
 
 /// Run a blocking body on the async runtime's worker pool so a slow or hung
 /// `lore` call never blocks the UI thread — the invoke promise just pends.
-async fn blocking<T, F>(f: F) -> Result<T, String>
+pub(crate) async fn blocking<T, F>(f: F) -> Result<T, String>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
@@ -64,7 +64,7 @@ pub struct StatusResultDto {
 /// Known-binary game/DCC formats — fast path, no disk access.
 const BINARY_EXTS: &[&str] = &[
     "uasset", "umap", "pak",
-    "png", "tga", "dds", "exr", "hdr", "tif", "tiff", "jpg", "jpeg", "webp", "psd",
+    "png", "tga", "dds", "exr", "hdr", "tif", "tiff", "jpg", "jpeg", "webp", "gif", "psd",
     "fbx", "obj", "abc", "gltf", "glb", "blend", "ma", "mb", "max", "ztl",
     "sbs", "sbsar", "spp",
     "wav", "ogg", "mp3", "flac", "bank",
@@ -77,7 +77,7 @@ const TEXT_EXTS: &[&str] = &[
     "uproject", "uplugin", "usf", "ush",
 ];
 
-fn ext_of(path: &str) -> String {
+pub(crate) fn ext_of(path: &str) -> String {
     let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     match base.rsplit_once('.') {
         Some((_, e)) => e.to_ascii_lowercase(),

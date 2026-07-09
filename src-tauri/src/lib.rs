@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod lore;
+mod preview;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,6 +49,7 @@ pub fn run() {
         commands::lore_undo_commit,
         commands::lore_identity,
         commands::lore_sign_out,
+        preview::lore_preview,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
