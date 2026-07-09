@@ -15,8 +15,10 @@ pub struct PreviewDto {
 }
 
 const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
-const IMAGE_EXTS: &[&str] =
-    &["png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend"];
+const IMAGE_EXTS: &[&str] = &[
+    "png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend",
+    "uasset", "umap",
+];
 
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
 
@@ -103,6 +105,7 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "psd" => decode_psd(path),
         "exr" | "hdr" => decode_hdr_like(path),
         "blend" => decode_blend(path),
+        "uasset" | "umap" => decode_uasset(path),
         _ => image::open(path).map(|d| d.to_rgba8()).map_err(|e| e.to_string()),
     }
 }
@@ -164,6 +167,221 @@ fn blend_thumbnail(data: &[u8]) -> Option<image::RgbaImage> {
             return image::RgbaImage::from_raw(w as u32, h as u32, rgba);
         }
         o = body.checked_add(size)?;
+    }
+    None
+}
+
+/// Bounds-checked little-endian cursor over a byte slice (no panics).
+struct Cur<'a> {
+    b: &'a [u8],
+    p: usize,
+}
+
+impl<'a> Cur<'a> {
+    fn new(b: &'a [u8]) -> Self {
+        Cur { b, p: 0 }
+    }
+    fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+        let s = self.b.get(self.p..self.p.checked_add(n)?)?;
+        self.p += n;
+        Some(s)
+    }
+    fn i32(&mut self) -> Option<i32> {
+        self.take(4).map(|s| i32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    }
+    fn u32(&mut self) -> Option<u32> {
+        self.i32().map(|v| v as u32)
+    }
+    fn skip(&mut self, n: usize) -> Option<()> {
+        self.take(n).map(|_| ())
+    }
+}
+
+/// Unreal FString: `i32 len`; len ≥ 0 ⇒ `len` UTF-8 bytes (trailing NUL
+/// included), len < 0 ⇒ `-len` UTF-16LE code units. `max_units` bounds
+/// hostile lengths so a corrupt file never triggers a huge allocation.
+fn read_fstring(r: &mut Cur, max_units: i32) -> Option<String> {
+    let len = r.i32()?;
+    if len == 0 {
+        return Some(String::new());
+    }
+    if len > 0 {
+        if len > max_units {
+            return None;
+        }
+        let bytes = r.take(len as usize)?;
+        let s = bytes.strip_suffix(&[0]).unwrap_or(bytes);
+        Some(String::from_utf8_lossy(s).into_owned())
+    } else {
+        let n = len.checked_neg().filter(|n| *n <= max_units)?;
+        let bytes = r.take((n as usize) * 2)?;
+        let mut units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        if units.last() == Some(&0) {
+            units.pop();
+        }
+        Some(String::from_utf16_lossy(&units))
+    }
+}
+
+/// Seeked read of up to `len` bytes at `off` (short read at EOF is fine).
+fn read_at(f: &mut std::fs::File, off: u64, len: usize) -> Option<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    f.seek(SeekFrom::Start(off)).ok()?;
+    let mut v = Vec::new();
+    f.by_ref().take(len as u64).read_to_end(&mut v).ok()?;
+    Some(v)
+}
+
+/// Decode bytes only if they start with a PNG or JPEG magic and stay
+/// thumbnail-sized (UE thumbnails are ≤ 256 px; the 1024 cap rejects false
+/// magic hits inside source data). Trailing garbage after the image is fine.
+fn decode_sniffed(data: &[u8]) -> Option<image::RgbaImage> {
+    if !(data.starts_with(b"\x89PNG\r\n\x1a\n") || data.starts_with(&[0xFF, 0xD8, 0xFF])) {
+        return None;
+    }
+    let img = image::load_from_memory(data).ok()?.to_rgba8();
+    if img.width().max(img.height()) > 1024 {
+        return None;
+    }
+    Some(img)
+}
+
+/// The thumbnail the Unreal editor serializes into a package at save time.
+/// Seeked reads only — editor textures can weigh hundreds of MB.
+fn decode_uasset(path: &Path) -> Result<image::RgbaImage, String> {
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let len = f.metadata().map_err(|e| e.to_string())?.len();
+    uasset_summary_thumbnail(&mut f, len)
+        .or_else(|| uasset_magic_scan(&mut f, len))
+        .ok_or_else(|| "no embedded thumbnail".into())
+}
+
+/// Parse the FPackageFileSummary far enough to locate ThumbnailTableOffset.
+/// The prefix (tag → NameOffset) is stable across UE 4.11+ and read
+/// structurally; the tail is version-gated (fields appear/disappear per
+/// release, some variable-sized), so instead of hardcoding every gate the
+/// offset is found by probing each byte position in a small window and
+/// validating the table behind it — only the real one survives validation.
+fn uasset_summary_thumbnail(f: &mut std::fs::File, file_len: u64) -> Option<image::RgbaImage> {
+    let head = read_at(f, 0, 64 * 1024)?;
+    let mut r = Cur::new(&head);
+    if r.u32()? != 0x9E2A_83C1 {
+        return None; // not a package (or big-endian) — the magic scan may still hit
+    }
+    let legacy = r.i32()?;
+    if !(-12..=-6).contains(&legacy) {
+        return None; // pre-4.11 custom-version container or unknown future layout
+    }
+    r.skip(4)?; // LegacyUE3Version
+    r.skip(4)?; // FileVersionUE4 (0 for unversioned ⇒ latest layout, same path)
+    if legacy <= -8 {
+        r.skip(4)?; // FileVersionUE5
+    }
+    r.skip(4)?; // FileVersionLicenseeUE4
+    if legacy <= -9 {
+        r.skip(20)?; // SavedHash (FIoHash) — UE 5.5+
+        r.skip(4)?; // TotalHeaderSize (moved before the custom versions here)
+    }
+    let custom = r.i32()?;
+    if !(0..=4096).contains(&custom) {
+        return None;
+    }
+    r.skip(custom as usize * 20)?; // FGuid + i32 per custom version
+    if legacy > -9 {
+        r.skip(4)?; // TotalHeaderSize (UE ≤ 5.4 position)
+    }
+    read_fstring(&mut r, 4096)?; // FolderName (≤ 5.4) / PackageName (5.5+)
+    r.skip(4)?; // PackageFlags
+    r.skip(8)?; // NameCount + NameOffset
+    let start = r.p;
+    let end = (start + 512).min(head.len().saturating_sub(4));
+    for p in start..end {
+        let v = i32::from_le_bytes([head[p], head[p + 1], head[p + 2], head[p + 3]]);
+        if v > 0 && (v as u64) < file_len {
+            if let Some(img) = thumbnail_table(f, v as u64, file_len) {
+                return Some(img);
+            }
+        }
+    }
+    None
+}
+
+/// Validate and read a thumbnail table at `off`: `i32 count`, then per entry
+/// ClassName (FString), ObjectPathWithoutPackageName (FString), `i32
+/// FileOffset`. Returns the first entry whose FObjectThumbnail decodes.
+fn thumbnail_table(f: &mut std::fs::File, off: u64, file_len: u64) -> Option<image::RgbaImage> {
+    let probe = read_at(f, off, 4)?;
+    let count = Cur::new(&probe).i32()?;
+    if !(1..=64).contains(&count) {
+        return None;
+    }
+    let buf = read_at(f, off + 4, 64 * 1024)?;
+    let mut r = Cur::new(&buf);
+    let mut offsets = Vec::new();
+    for _ in 0..count {
+        let class = read_fstring(&mut r, 1024)?;
+        if !class.chars().all(|c| c.is_ascii_graphic()) {
+            return None; // class names are plain ASCII — reject noise early
+        }
+        read_fstring(&mut r, 4096)?; // object path
+        let data_off = r.i32()?;
+        if data_off <= 0 || (data_off as u64) >= file_len {
+            return None;
+        }
+        offsets.push(data_off as u64);
+    }
+    offsets.into_iter().find_map(|o| object_thumbnail(f, o, file_len))
+}
+
+/// FObjectThumbnail: `i32 width`, `i32 height` (a negative value encodes a
+/// compression variant — ignore the sign), `i32 size`, then PNG/JPEG bytes.
+fn object_thumbnail(f: &mut std::fs::File, off: u64, file_len: u64) -> Option<image::RgbaImage> {
+    let head = read_at(f, off, 12)?;
+    let mut r = Cur::new(&head);
+    let w = r.i32()?.unsigned_abs();
+    let h = r.i32()?.unsigned_abs();
+    let size = r.i32()?;
+    if w == 0 || h == 0 || w > 4096 || h > 4096 {
+        return None;
+    }
+    if size <= 0 || size as u64 > 16 << 20 || off + 12 + size as u64 > file_len {
+        return None;
+    }
+    decode_sniffed(&read_at(f, off + 12, size as usize)?)
+}
+
+/// Last-resort, version-agnostic fallback: bounded chunked scan (64 MiB read
+/// budget, chunks overlapping enough that a whole thumbnail payload is always
+/// seen in one piece) for a PNG/JPEG magic that decodes thumbnail-sized.
+fn uasset_magic_scan(f: &mut std::fs::File, file_len: u64) -> Option<image::RgbaImage> {
+    const CHUNK: usize = 16 << 20;
+    const OVERLAP: usize = 4 << 20;
+    let mut pos = 0u64;
+    let mut budget: u64 = 64 << 20;
+    while pos < file_len && budget > 0 {
+        let want = CHUNK.min((file_len - pos) as usize).min(budget as usize);
+        let buf = read_at(f, pos, want)?;
+        if buf.is_empty() {
+            return None;
+        }
+        budget -= buf.len() as u64;
+        let last = pos + buf.len() as u64 >= file_len;
+        // The tail overlap of a non-final chunk is re-scanned (with full
+        // context) at the start of the next one — skip it here.
+        let scan_end = if last { buf.len() } else { buf.len().saturating_sub(OVERLAP) };
+        for i in 0..scan_end {
+            let b = buf[i];
+            if b != 0x89 && b != 0xFF {
+                continue;
+            }
+            if let Some(img) = decode_sniffed(&buf[i..]) {
+                return Some(img);
+            }
+        }
+        if last || buf.len() <= OVERLAP {
+            break;
+        }
+        pos += (buf.len() - OVERLAP) as u64;
     }
     None
 }
@@ -366,6 +584,129 @@ mod tests {
         let bad = d.join("bad.blend");
         std::fs::write(&bad, b"NOTABLEND").unwrap();
         assert_eq!(image_preview(&bad, "blend", 128, None).kind, "none");
+    }
+
+    fn mini_png(w: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(w, h, image::Rgba([10, 200, 30, 255]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        buf.into_inner()
+    }
+
+    /// UTF-8 FString bytes: i32 len (NUL included) + bytes + NUL.
+    fn fstr(s: &str) -> Vec<u8> {
+        let mut v = ((s.len() + 1) as i32).to_le_bytes().to_vec();
+        v.extend_from_slice(s.as_bytes());
+        v.push(0);
+        v
+    }
+
+    /// Deterministic garbage that can never alias a PNG/JPEG magic
+    /// (consecutive bytes always differ by 7).
+    fn noise(n: usize) -> Vec<u8> {
+        (0..n).map(|i| (i * 7 + 13) as u8).collect()
+    }
+
+    /// Minimal synthetic UE-style package: summary prefix, one
+    /// FObjectThumbnail (real PNG payload), then the thumbnail table.
+    /// `legacy` -8 = UE 5.0–5.4 layout, -9 = UE 5.5+ (SavedHash, moved
+    /// TotalHeaderSize).
+    fn synthetic_uasset(legacy: i32) -> Vec<u8> {
+        let png = mini_png(4, 4);
+        let thumb_off = 256u64;
+        let table_off = thumb_off + 12 + png.len() as u64;
+        let mut b = Vec::new();
+        b.extend_from_slice(&0x9E2A_83C1u32.to_le_bytes()); // package tag
+        b.extend_from_slice(&legacy.to_le_bytes()); // LegacyFileVersion
+        b.extend_from_slice(&864i32.to_le_bytes()); // LegacyUE3Version
+        b.extend_from_slice(&522i32.to_le_bytes()); // FileVersionUE4
+        b.extend_from_slice(&1009i32.to_le_bytes()); // FileVersionUE5
+        b.extend_from_slice(&0i32.to_le_bytes()); // FileVersionLicenseeUE4
+        if legacy <= -9 {
+            b.extend_from_slice(&[0xABu8; 20]); // SavedHash
+            b.extend_from_slice(&(thumb_off as i32).to_le_bytes()); // TotalHeaderSize
+        }
+        b.extend_from_slice(&1i32.to_le_bytes()); // custom version count
+        b.extend_from_slice(&[0u8; 20]); // FGuid + i32 entry
+        if legacy > -9 {
+            b.extend_from_slice(&(thumb_off as i32).to_le_bytes()); // TotalHeaderSize
+        }
+        b.extend_from_slice(&fstr("None")); // FolderName / PackageName
+        b.extend_from_slice(&0u32.to_le_bytes()); // PackageFlags
+        b.extend_from_slice(&8i32.to_le_bytes()); // NameCount
+        b.extend_from_slice(&64i32.to_le_bytes()); // NameOffset
+        b.extend_from_slice(&[0u8; 24]); // assorted version-gated counts/offsets
+        b.extend_from_slice(&(table_off as i32).to_le_bytes()); // ThumbnailTableOffset
+        b.resize(thumb_off as usize, 0);
+        // FObjectThumbnail: 4×4, negative height = compression-variant marker.
+        b.extend_from_slice(&4i32.to_le_bytes());
+        b.extend_from_slice(&(-4i32).to_le_bytes());
+        b.extend_from_slice(&(png.len() as i32).to_le_bytes());
+        b.extend_from_slice(&png);
+        b.extend_from_slice(&1i32.to_le_bytes()); // table: 1 entry
+        b.extend_from_slice(&fstr("Texture2D"));
+        b.extend_from_slice(&fstr("T_Test"));
+        b.extend_from_slice(&(thumb_off as i32).to_le_bytes());
+        b
+    }
+
+    #[test]
+    fn uasset_thumbnail_via_summary_table() {
+        for legacy in [-8i32, -9] {
+            let d = dir(&format!("uasset{}", -legacy));
+            let p = d.join("T_Test.uasset");
+            std::fs::write(&p, synthetic_uasset(legacy)).unwrap();
+            let out = image_preview(&p, "uasset", 128, None);
+            assert_eq!(out.kind, "image", "legacy {legacy}");
+            assert_eq!((out.width, out.height), (Some(4), Some(4)));
+            // Specifically through the structured path, not the scan fallback.
+            let mut f = std::fs::File::open(&p).unwrap();
+            let len = f.metadata().unwrap().len();
+            assert!(uasset_summary_thumbnail(&mut f, len).is_some(), "legacy {legacy}");
+        }
+    }
+
+    #[test]
+    fn uasset_fallback_scan_finds_embedded_png() {
+        let d = dir("uassetscan");
+        let png = mini_png(8, 2);
+        let mut b = noise(3000);
+        b.extend_from_slice(&png);
+        b.extend_from_slice(&noise(3000));
+        let p = d.join("Level.umap");
+        std::fs::write(&p, b).unwrap();
+        let out = image_preview(&p, "umap", 128, None);
+        assert_eq!(out.kind, "image");
+        assert_eq!((out.width, out.height), (Some(8), Some(2)));
+    }
+
+    #[test]
+    fn uasset_without_thumbnail_is_none() {
+        let d = dir("uassetnone");
+        let p = d.join("Cooked.uasset");
+        std::fs::write(&p, noise(4096)).unwrap();
+        assert_eq!(image_preview(&p, "uasset", 128, None).kind, "none");
+    }
+
+    #[test]
+    fn read_fstring_handles_both_encodings() {
+        // UTF-8: positive len, trailing NUL included.
+        let mut b = 3i32.to_le_bytes().to_vec();
+        b.extend_from_slice(b"Hi\0");
+        let mut r = Cur::new(&b);
+        assert_eq!(read_fstring(&mut r, 64).as_deref(), Some("Hi"));
+        assert_eq!(r.p, b.len()); // fully consumed, next field aligned
+        // UTF-16LE: negative len counts code units, NUL included.
+        let mut b = (-3i32).to_le_bytes().to_vec();
+        for u in [0x48u16, 0xE9, 0] {
+            b.extend_from_slice(&u.to_le_bytes());
+        }
+        let mut r = Cur::new(&b);
+        assert_eq!(read_fstring(&mut r, 64).as_deref(), Some("Hé"));
+        assert_eq!(r.p, b.len());
+        // Hostile length is rejected, never allocated.
+        let big = i32::MAX.to_le_bytes();
+        assert!(read_fstring(&mut Cur::new(&big), 64).is_none());
     }
 
     #[test]
