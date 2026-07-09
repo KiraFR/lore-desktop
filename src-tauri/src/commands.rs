@@ -61,9 +61,85 @@ pub struct StatusResultDto {
     pub files: Vec<ChangedFileDto>,
 }
 
-const BINARY_EXTS: &[&str] = &["uasset", "umap", "png", "fbx", "wav", "tga", "psd"];
-fn is_binary_path(path: &str) -> bool {
-    path.rsplit('.').next().map(|e| BINARY_EXTS.contains(&e.to_ascii_lowercase().as_str())).unwrap_or(false)
+/// Known-binary game/DCC formats — fast path, no disk access.
+const BINARY_EXTS: &[&str] = &[
+    "uasset", "umap", "pak",
+    "png", "tga", "dds", "exr", "hdr", "tif", "tiff", "jpg", "jpeg", "webp", "psd",
+    "fbx", "obj", "abc", "gltf", "glb", "blend", "ma", "mb", "max", "ztl",
+    "sbs", "sbsar", "spp",
+    "wav", "ogg", "mp3", "flac", "bank",
+    "anim", "zip", "bin", "dll", "exe", "so", "dylib",
+];
+/// Known-text formats — skips the content sniff (and its disk read).
+const TEXT_EXTS: &[&str] = &[
+    "txt", "md", "ini", "cfg", "json", "yaml", "yml", "toml", "xml", "csv",
+    "cpp", "hpp", "h", "c", "cs", "py", "rs", "js", "ts", "svelte", "css", "html",
+    "uproject", "uplugin", "usf", "ush",
+];
+
+fn ext_of(path: &str) -> String {
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    match base.rsplit_once('.') {
+        Some((_, e)) => e.to_ascii_lowercase(),
+        None => String::new(),
+    }
+}
+
+/// NUL byte in the first 8 KiB ⇒ binary. `None` when the file can't be read.
+fn sniff_nul(path: &std::path::Path) -> Option<bool> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut buf = [0u8; 8192];
+    let n = f.read(&mut buf).ok()?;
+    Some(buf[..n].contains(&0))
+}
+
+/// Extension lists first; unknown extensions get a content sniff of the local
+/// working file. Unreadable (deleted, missing) files default to text.
+fn is_binary(repo_root: &std::path::Path, rel_path: &str) -> bool {
+    let ext = ext_of(rel_path);
+    if BINARY_EXTS.contains(&ext.as_str()) {
+        return true;
+    }
+    if TEXT_EXTS.contains(&ext.as_str()) {
+        return false;
+    }
+    sniff_nul(&repo_root.join(rel_path)).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod binary_tests {
+    use super::*;
+
+    fn tmp(name: &str, content: &[u8]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join("lore-desktop-bintest");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn known_extensions_skip_the_disk() {
+        let root = std::path::Path::new("Z:/does/not/exist");
+        assert!(is_binary(root, "Content/Char/hero.blend"));
+        assert!(is_binary(root, "Audio/music.BANK"));
+        assert!(!is_binary(root, "Source/Player.cpp"));
+    }
+
+    #[test]
+    fn unknown_extension_sniffs_content() {
+        let dir = std::env::temp_dir().join("lore-desktop-bintest");
+        tmp("asset.customfmt", b"BINHEader\x00\x01\x02rest");
+        tmp("notes.customtxt", b"plain old text, no nul here");
+        assert!(is_binary(&dir, "asset.customfmt"));
+        assert!(!is_binary(&dir, "notes.customtxt"));
+    }
+
+    #[test]
+    fn missing_file_defaults_to_text() {
+        assert!(!is_binary(std::path::Path::new("Z:/nope"), "gone.customfmt"));
+    }
 }
 
 /// Map the `action` value from `repositoryStatusFile` to the UI action string.
@@ -81,7 +157,7 @@ fn map_action(action: &serde_json::Value) -> String {
     .to_string()
 }
 
-fn status_from(events: &[LoreEvent]) -> StatusResultDto {
+fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResultDto {
     let rev = events_with_tag(events, "repositoryStatusRevision").into_iter().next();
     let branch = rev.and_then(|d| d.get("branchName")).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let local_n = rev.and_then(|d| d.get("revisionLocalNumber")).and_then(|v| v.as_u64()).unwrap_or(0);
@@ -98,7 +174,7 @@ fn status_from(events: &[LoreEvent]) -> StatusResultDto {
     let files = events_with_tag(events, "repositoryStatusFile").into_iter().map(|d| {
         let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
         ChangedFileDto {
-            is_binary: is_binary_path(&path),
+            is_binary: is_binary(repo_root, &path),
             action: d.get("action").map(map_action).unwrap_or_else(|| "modify".into()),
             size: d.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
             path,
@@ -122,7 +198,7 @@ pub async fn lore_status(repo_path: String) -> Result<StatusResultDto, String> {
     // dirty flags on the local working copy, it does not touch file contents.
     blocking(move || {
         let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
-        Ok(status_from(&events))
+        Ok(status_from(&events, std::path::Path::new(&repo_path)))
     })
     .await
 }
@@ -947,14 +1023,14 @@ pub struct MergeConflictDto {
 /// Conflicted files during an in-progress merge: `repositoryStatusFile` entries
 /// with `flagConflict`. `unresolved` = `flagConflictUnresolved` (a resolved file
 /// keeps `flagConflict` true but `flagConflictUnresolved` false until committed).
-fn merge_conflicts_from(events: &[LoreEvent]) -> Vec<MergeConflictDto> {
+fn merge_conflicts_from(events: &[LoreEvent], repo_root: &std::path::Path) -> Vec<MergeConflictDto> {
     events_with_tag(events, "repositoryStatusFile")
         .into_iter()
         .filter(|d| d.get("flagConflict").map(json_truthy).unwrap_or(false))
         .map(|d| {
             let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
             MergeConflictDto {
-                is_binary: is_binary_path(&path),
+                is_binary: is_binary(repo_root, &path),
                 unresolved: d.get("flagConflictUnresolved").map(json_truthy).unwrap_or(false),
                 path,
             }
@@ -978,7 +1054,7 @@ pub async fn lore_merge_start(repo_path: String, source: String) -> Result<(), S
 pub async fn lore_merge_conflicts(repo_path: String) -> Result<Vec<MergeConflictDto>, String> {
     blocking(move || {
         let events = run_lore(&["status", "--scan", "--repository", &repo_path])?;
-        Ok(merge_conflicts_from(&events))
+        Ok(merge_conflicts_from(&events, std::path::Path::new(&repo_path)))
     })
     .await
 }
@@ -1034,7 +1110,7 @@ mod merge_conflicts_tests {
     #[test]
     fn lists_conflicts_with_unresolved_flag() {
         let events = parse_events(STATUS).unwrap();
-        let conflicts = merge_conflicts_from(&events);
+        let conflicts = merge_conflicts_from(&events, std::path::Path::new(""));
         // Only the two flagConflict files; clean.txt excluded.
         assert_eq!(conflicts.len(), 2);
         let a = conflicts.iter().find(|c| c.path == "a.txt").unwrap();
@@ -1225,7 +1301,7 @@ mod status_tests {
     #[test]
     fn parses_status_fixture() {
         let events = parse_events(include_str!("../tests/fixtures/status.ndjson")).unwrap();
-        let status = status_from(&events);
+        let status = status_from(&events, std::path::Path::new(""));
         assert!(!status.branch.is_empty());
         // Files may be empty for a clean clone; the parse must still succeed with a branch.
     }
@@ -1237,7 +1313,7 @@ mod status_tests {
             r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
         );
         let events = parse_events(sample).unwrap();
-        let s = status_from(&events);
+        let s = status_from(&events, std::path::Path::new(""));
         assert_eq!(s.revision_number, 7);
         assert!(!s.remote_available);
         assert!(s.remote_authorized);
@@ -1250,7 +1326,7 @@ mod status_tests {
             r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
         );
         let events = parse_events(sample).unwrap();
-        let s = status_from(&events);
+        let s = status_from(&events, std::path::Path::new(""));
         assert!(s.remote_available);
         assert!(s.remote_authorized);
     }
