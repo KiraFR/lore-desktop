@@ -51,6 +51,7 @@ pub fn run() {
         commands::lore_undo_commit,
         commands::lore_identity,
         commands::lore_sign_out,
+        commands::lore_file_history,
         preview::lore_preview,
         notifications::lore_notifications_start,
         notifications::lore_notifications_stop,
