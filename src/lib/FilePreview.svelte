@@ -6,6 +6,7 @@
   import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
   import AudioPlayer from './AudioPlayer.svelte'
+  import ModelViewer from './ModelViewer.svelte'
 
   let { file }: { file: ChangedFile | null } = $props()
 
@@ -113,6 +114,9 @@
         {#if preview?.kind === 'audio' && preview.url}
           <AudioPlayer src={preview.url} name={baseName(file.path)} />
           <p class="note muted"><Icon name="info" size={14} /> Audio asset — plays the working copy.</p>
+        {:else if preview?.kind === 'model' && preview.url}
+          <ModelViewer url={preview.url} name={baseName(file.path)} />
+          <p class="note muted"><Icon name="info" size={14} /> 3D preview of the working copy — drag to orbit, scroll to zoom.</p>
         {:else}
           <div class="cmp">
             {#if file.action !== 'add'}
