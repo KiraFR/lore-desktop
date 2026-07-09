@@ -1,16 +1,20 @@
 <script lang="ts">
-  import { session, signOut } from './session.svelte'
+  import { session } from './session.svelte'
   import { repo, sync, push } from './repo.svelte'
+  import { initialsFor } from './identity'
   import Icon from './Icon.svelte'
   import BranchMenu from './BranchMenu.svelte'
   import RepoSwitcher from './RepoSwitcher.svelte'
+  import AvatarMenu from './AvatarMenu.svelte'
 
   const repoName = $derived(session.config.currentRepo?.split(/[\\/]/).pop() || 'Select a repository')
-  const initials = 'JD'
+  const initials = $derived(initialsFor(session.config.displayName, session.identity?.email))
   let repoOpen = $state(false)
   let repoZoneEl = $state<HTMLDivElement>()
   let menuOpen = $state(false)
   let zoneEl = $state<HTMLDivElement>()
+  let avatarOpen = $state(false)
+  let avatarZoneEl = $state<HTMLDivElement>()
 
   // Close a menu when clicking anywhere outside its zone (button + popover).
   $effect(() => {
@@ -25,6 +29,14 @@
     if (!menuOpen) return
     function onDoc(e: PointerEvent) {
       if (zoneEl && !zoneEl.contains(e.target as Node)) menuOpen = false
+    }
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
+  })
+  $effect(() => {
+    if (!avatarOpen) return
+    function onDoc(e: PointerEvent) {
+      if (avatarZoneEl && !avatarZoneEl.contains(e.target as Node)) avatarOpen = false
     }
     document.addEventListener('pointerdown', onDoc)
     return () => document.removeEventListener('pointerdown', onDoc)
@@ -67,7 +79,10 @@
     </button>
   {/if}
 
-  <button class="avatar" onclick={signOut} title="Sign out">{initials}</button>
+  <div class="avatarzone" bind:this={avatarZoneEl}>
+    <button class="avatar" class:open={avatarOpen} onclick={() => (avatarOpen = !avatarOpen)} title="Account">{initials}</button>
+    {#if avatarOpen}<AvatarMenu onclose={() => (avatarOpen = false)} />{/if}
+  </div>
 </header>
 
 <style>
@@ -82,5 +97,7 @@
   .action { display: flex; align-items: center; gap: 6px; height: 32px; }
   .action .count { font-size: 11px; color: var(--text-muted); }
   .action .count.on { color: var(--on-accent); opacity: .85; }
+  .avatarzone { position: relative; }
   .avatar { width: 30px; height: 30px; border-radius: 50%; padding: 0; background: var(--accent-soft); color: var(--accent); border: none; font-size: 11px; font-weight: 500; }
+  .avatar.open { outline: 2px solid var(--accent); }
 </style>
