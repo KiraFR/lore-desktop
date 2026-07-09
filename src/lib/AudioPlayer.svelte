@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { computePeaks, formatTime } from './audioPeaks'
+  import { computePeaks, formatTime, wavSampleRate } from './audioPeaks'
   import Icon from './Icon.svelte'
 
   let { src, name }: { src: string; name: string } = $props()
@@ -15,7 +15,9 @@
   let loop = $state(false)
   let volume = $state(Math.min(1, Math.max(0, Number(localStorage.getItem(VOLUME_KEY) ?? '1') || 0)))
   let peaks = $state<number[] | null>(null)
-  let info = $state<{ sampleRate: number; channels: number } | null>(null)
+  // sampleRate is the SOURCE rate (WAV header) — decodeAudioData resamples to
+  // the device rate, so its sampleRate would lie; null hides the kHz segment.
+  let info = $state<{ sampleRate: number | null; channels: number } | null>(null)
   let waveEl = $state<HTMLDivElement>()
 
   // One <audio> per src — never autoplays, always stopped on change/unmount.
@@ -53,11 +55,12 @@
         if (buf.byteLength > MAX_DECODE_BYTES) return
         const ctx = new AudioContext()
         try {
+          const srcRate = wavSampleRate(buf)
           const decoded = await ctx.decodeAudioData(buf)
           if (src !== s) return
           const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i))
           peaks = computePeaks(channels, BUCKETS)
-          info = { sampleRate: decoded.sampleRate, channels: decoded.numberOfChannels }
+          info = { sampleRate: srcRate, channels: decoded.numberOfChannels }
         } finally {
           ctx.close()
         }
@@ -90,6 +93,13 @@
 
   const progress = $derived(duration > 0 ? current / duration : 0)
   const chLabel = $derived(!info ? '' : info.channels === 1 ? 'mono' : info.channels === 2 ? 'stereo' : `${info.channels} ch`)
+  const fmtLabel = $derived.by(() => {
+    if (!info) return duration ? formatTime(duration) : ''
+    const parts: string[] = []
+    if (info.sampleRate) parts.push(`${(info.sampleRate / 1000).toLocaleString()} kHz`)
+    parts.push(chLabel, formatTime(duration))
+    return parts.join(' · ')
+  })
 </script>
 
 <div class="player">
@@ -121,7 +131,7 @@
       <Icon name="repeat" size={13} /> Loop
     </button>
     <span class="vol"><Icon name="volume" size={14} /><input type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" /></span>
-    <span class="fmt">{#if info}{(info.sampleRate / 1000).toLocaleString()} kHz · {chLabel} · {formatTime(duration)}{:else if duration}{formatTime(duration)}{/if}</span>
+    <span class="fmt">{fmtLabel}</span>
   </div>
 </div>
 

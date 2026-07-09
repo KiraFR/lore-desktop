@@ -22,6 +22,21 @@ export function computePeaks(channels: Float32Array[], buckets: number): number[
   return max > 0 ? out.map((v) => v / max) : out
 }
 
+/** Source sample rate from a WAV header (RIFF/WAVE fmt chunk), or null.
+ *  Needed because decodeAudioData resamples to the device rate and would lie. */
+export function wavSampleRate(buf: ArrayBuffer): number | null {
+  const v = new DataView(buf)
+  const tag = (o: number) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3))
+  if (buf.byteLength < 44 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null
+  let o = 12
+  while (o + 8 <= buf.byteLength) {
+    const size = v.getUint32(o + 4, true)
+    if (tag(o) === 'fmt ' && o + 16 <= buf.byteLength) return v.getUint32(o + 12, true)
+    o += 8 + size + (size % 2)
+  }
+  return null
+}
+
 /** "m:ss.cc" — centiseconds, the scale that matters for SFX. */
 export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) seconds = 0
