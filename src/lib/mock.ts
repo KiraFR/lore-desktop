@@ -36,7 +36,6 @@ function buildBigHistory(n: number): Commit[] {
     const nf = 1 + ((i * 3) % 3)
     return {
       id: id(i), rev: n - i, lane, parents, head, message, author: a[0], when: whenFor(i),
-      adds: (i * 13) % 7, mods: 1 + (i * 5) % 5, dels: i % 9 === 0 ? 1 : 0,
       files: Array.from({ length: nf }, (_, k) => fileFor(i, k)),
     }
   }

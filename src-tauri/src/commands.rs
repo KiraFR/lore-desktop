@@ -238,9 +238,6 @@ pub struct CommitDto {
     pub message: String,
     pub author: String,
     pub when: String,
-    pub adds: u64,
-    pub mods: u64,
-    pub dels: u64,
     pub lane: u64,           // Slice A: 0 for all (linear); real lane layout is a follow-up
     pub parents: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -316,7 +313,7 @@ fn history_from(events: &[LoreEvent]) -> HistoryPage {
                 commits.push(CommitDto {
                     id, rev, parents, head: None,
                     message: String::new(), author: String::new(), when: String::new(),
-                    adds: 0, mods: 0, dels: 0, lane: 0, files: Vec::new(),
+                    lane: 0, files: Vec::new(),
                 });
                 author_ids.push(String::new());
                 when_ms.push(0);

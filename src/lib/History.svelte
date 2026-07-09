@@ -2,6 +2,7 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo, history, refreshHistory, loadMoreHistory, undoCommit } from './repo.svelte'
+  import { initialsFor } from './identity'
   import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
   import type { CommitFile } from './types'
@@ -127,14 +128,19 @@
     { bg: '#14304d', fg: '#7fb0ff' }, { bg: '#3a2b12', fg: '#e3b341' },
     { bg: '#132f22', fg: '#5fca9b' }, { bg: '#301a3d', fg: '#c79bff' },
   ]
+  const meEmail = $derived(session.identity?.email ?? null)
+  const isMe = (name: string) => name === 'you' || (meEmail !== null && name === meEmail)
+
   function avatar(name: string) {
-    const initials = name === 'you' ? 'JD' : name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+    const initials = isMe(name)
+      ? initialsFor(session.config.displayName, meEmail)
+      : name.split(/[\s._@-]+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'
     let h = 0; for (let i = 0; i < name.length; i++) h += name.charCodeAt(i)
     return { initials, ...PALETTE[h % PALETTE.length] }
   }
-  // Compact author label for inline text: the local part of an email (the full
-  // address shows in the avatar's hover tooltip). 'you' stays 'you'.
-  const shortName = (name: string) => (name === 'you' ? 'you' : name.includes('@') ? name.split('@')[0] : name)
+  // Compact author label for inline text: 'you' for the signed-in user, else the
+  // email local part (the full address shows in the avatar's hover tooltip).
+  const shortName = (name: string) => (isMe(name) ? 'you' : name.includes('@') ? name.split('@')[0] : name)
 
   function onScroll() {
     if (!glistEl) return
@@ -171,7 +177,6 @@
               {#if c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
               <span class="ava" style="background:{av.bg};color:{av.fg}" title={c.author}>{av.initials}</span>
               <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub">{shortName(c.author)} · {c.when}</span></span>
-              <span class="counts">{#if c.adds}<span class="a">+{c.adds}</span>{/if}{#if c.mods}<span class="m">~{c.mods}</span>{/if}{#if c.dels}<span class="d">−{c.dels}</span>{/if}</span>
             </div>
           {/each}
         </div>
