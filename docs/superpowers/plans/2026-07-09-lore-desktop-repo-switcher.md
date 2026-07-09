@@ -37,7 +37,7 @@
 - Create: `src/lib/repoList.ts`
 - Test: `src/lib/repoList.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `src/lib/repoList.test.ts`:
 
@@ -104,12 +104,12 @@ describe('filterRepos', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL — `Cannot find module './repoList'` (or equivalent resolve error).
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/lib/repoList.ts`:
 
@@ -144,12 +144,12 @@ export function filterRepos(list: string[], query: string): string[] {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS — all `repoList` tests green, existing `toast`/`mock` tests still green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/repoList.ts src/lib/repoList.test.ts
@@ -165,7 +165,7 @@ git commit -m "feat(repos): pure helpers for the known-repos list"
 
 No unit tests here: the vitest config lacks the Svelte plugin, so `$state` runes files can't be imported in tests. All list logic is delegated to the Task 1 helpers, which are tested; verification is `npm run check`.
 
-- [ ] **Step 1: Rewrite `selectRepo`, add `removeRepo`, migrate old configs in `bootstrap`**
+- [x] **Step 1: Rewrite `selectRepo`, add `removeRepo`, migrate old configs in `bootstrap`**
 
 Replace the entire content of `src/lib/session.svelte.ts` with:
 
@@ -247,12 +247,12 @@ Notes:
 - The old `selectRepo` capped the list at 10 (`.slice(0, 10)`); the cap is **deliberately dropped** — `recentRepos` is now the full known-repos list, per the spec.
 - `clearCurrentRepo` is kept for now because `TitleBar.svelte` still imports it; it is deleted in Task 5.
 
-- [ ] **Step 2: Typecheck and test**
+- [x] **Step 2: Typecheck and test**
 
 Run: `npm run check && npm test`
 Expected: both PASS (no component imports the new `removeRepo` yet — that's fine).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/session.svelte.ts
@@ -269,7 +269,7 @@ git commit -m "feat(repos): known-repos list in session state - promote, remove,
 
 These helpers wrap native dialogs and API calls (untestable side effects — toasts included); components keep only their busy-label state.
 
-- [ ] **Step 1: Create `src/lib/repoActions.ts`**
+- [x] **Step 1: Create `src/lib/repoActions.ts`**
 
 ```ts
 import { api } from './api'
@@ -313,7 +313,7 @@ export async function cloneServerRepo(entry: RepoEntry): Promise<boolean> {
 }
 ```
 
-- [ ] **Step 2: Refactor `RepoPicker.svelte` to use the helpers**
+- [x] **Step 2: Refactor `RepoPicker.svelte` to use the helpers**
 
 Replace the `<script>` block of `src/lib/RepoPicker.svelte` with (markup and styles unchanged):
 
@@ -366,12 +366,12 @@ Replace the `<script>` block of `src/lib/RepoPicker.svelte` with (markup and sty
 
 (Behavior nuance: the busy label now also covers the native folder dialog, where before it only started after picking. Harmless — the window is blocked by the native dialog anyway.)
 
-- [ ] **Step 3: Typecheck and test**
+- [x] **Step 3: Typecheck and test**
 
 Run: `npm run check && npm test`
 Expected: both PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/repoActions.ts src/lib/RepoPicker.svelte
@@ -389,7 +389,7 @@ Modeled on `BranchMenu.svelte` (same popover shell, search input, `.sec` header,
 
 Rows need a nested remove affordance, and buttons can't nest — so each row is a `.rowwrap` div holding the switch `<button class="item">` plus an absolutely-positioned `<button class="rm">` shown on hover.
 
-- [ ] **Step 1: Create `src/lib/RepoSwitcher.svelte`**
+- [x] **Step 1: Create `src/lib/RepoSwitcher.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -547,12 +547,12 @@ Rows need a nested remove affordance, and buttons can't nest — so each row is 
 
 (The `.rp` path subtitle uses `direction: rtl` so long paths ellipsize at the *start*, keeping the informative tail — folder name end — visible. The check icon marks the current repo; the remove "×" only appears on row hover and sits above the row button, so a stray row click still switches while the × removes.)
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `npm run check`
 Expected: PASS. (The component is not yet mounted anywhere — svelte-check still compiles it.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/RepoSwitcher.svelte
@@ -567,7 +567,7 @@ git commit -m "feat(repos): RepoSwitcher dropdown - filter, add menu, clone pane
 - Modify: `src/lib/TitleBar.svelte`
 - Modify: `src/lib/session.svelte.ts:41-44` (delete `clearCurrentRepo`)
 
-- [ ] **Step 1: Rewire the repo button in `TitleBar.svelte`**
+- [x] **Step 1: Rewire the repo button in `TitleBar.svelte`**
 
 Replace the entire content of `src/lib/TitleBar.svelte` with:
 
@@ -660,7 +660,7 @@ Replace the entire content of `src/lib/TitleBar.svelte` with:
 </style>
 ```
 
-- [ ] **Step 2: Delete `clearCurrentRepo` from `session.svelte.ts`**
+- [x] **Step 2: Delete `clearCurrentRepo` from `session.svelte.ts`**
 
 Remove these lines (nothing imports it anymore):
 
@@ -671,12 +671,12 @@ export async function clearCurrentRepo() {
 }
 ```
 
-- [ ] **Step 3: Typecheck and test**
+- [x] **Step 3: Typecheck and test**
 
 Run: `npm run check && npm test`
 Expected: both PASS. If `check` reports a leftover `clearCurrentRepo` import, you missed the TitleBar import line.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/TitleBar.svelte src/lib/session.svelte.ts
@@ -689,9 +689,9 @@ git commit -m "feat(repos): TitleBar opens the repo switcher instead of dropping
 
 The vite dev server runs the app against the mock API (`api.ts` picks `mock` outside Tauri), which persists config to localStorage — the full switcher flow is exercisable without Tauri.
 
-- [ ] **Step 1: Run the app** — `npm run dev`, open the served URL.
+- [x] **Step 1: Run the app** — `npm run dev`, open the served URL.
 
-- [ ] **Step 2: Walk the flows** (sign in with the mock if needed):
+- [x] **Step 2: Walk the flows** (sign in with the mock if needed):
   1. First run (clear localStorage): full-screen picker appears; clone `game-main` → app opens it.
   2. Click **Current repository** → dropdown opens, `game-main` listed + check mark; **the main view stays on the repo** (no full-screen picker).
   3. Add ▾ → *Clone repository…* → clone `audio` → app switches to it; dropdown reopened shows `audio` first (MRU), both repos listed.
@@ -702,7 +702,7 @@ The vite dev server runs the app against the mock API (`api.ts` picks `mock` out
   8. Reload the page → repo list and current repo persist (localStorage config).
   9. Remove **all** repos → full-screen picker returns (first-run state).
 
-- [ ] **Step 3: Final full pass** — `npm run check && npm test`, then commit any fixes.
+- [x] **Step 3: Final full pass** — `npm run check && npm test`, then commit any fixes.
 
 ---
 
