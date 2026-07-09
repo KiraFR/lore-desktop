@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { session, bootstrap } from './lib/session.svelte'
+  import { session, bootstrap, loadIdentity } from './lib/session.svelte'
   import { repo, refreshStatus } from './lib/repo.svelte'
   import { ui, setView } from './lib/ui.svelte'
   import SignIn from './lib/SignIn.svelte'
@@ -37,6 +37,7 @@
   $effect(() => {
     session.config.currentRepo
     refreshStatus()
+    loadIdentity()
   })
 
   const files = $derived(repo.status?.files ?? [])

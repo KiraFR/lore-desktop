@@ -1,7 +1,7 @@
 import { api } from './api'
 import { toastError } from './toast'
 import { promoteRepo, removeRepoPath, nextCurrentRepo } from './repoList'
-import type { AppConfig } from './types'
+import type { AppConfig, Identity } from './types'
 
 /** The studio's Lore server; used as the default when no server is stored yet. */
 export const DEFAULT_SERVER_URL = 'lore://lore.example.com:41337'
@@ -10,6 +10,7 @@ export const DEFAULT_SERVER_URL = 'lore://lore.example.com:41337'
 export const session = $state({
   ready: false,
   signedIn: false,
+  identity: null as Identity | null,
   config: { serverUrl: null, currentRepo: null, recentRepos: [] } as AppConfig,
 })
 
@@ -60,7 +61,25 @@ export async function removeRepo(repoPath: string) {
   await api.saveConfig(session.config)
 }
 
+/** Fetch who we are on the current repo's server. Silent + best-effort: the
+ *  offline indicator explains failures, the avatar just shows "?" meanwhile. */
+export async function loadIdentity() {
+  const path = session.config.currentRepo
+  if (!path) { session.identity = null; return }
+  try {
+    session.identity = await api.getIdentity(path)
+  } catch {
+    session.identity = null
+  }
+}
+
+export async function setDisplayName(name: string) {
+  session.config = { ...session.config, displayName: name.trim() || null }
+  await api.saveConfig(session.config)
+}
+
 export async function signOut() {
   await api.signOut()
   session.signedIn = false
+  session.identity = null
 }
