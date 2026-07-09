@@ -22,7 +22,7 @@
 - Modify: `src-tauri/src/commands.rs` (add after `lore_sign_in`, ~line 370)
 - Modify: `src-tauri/src/lib.rs:48` (register)
 
-- [ ] **Step 1: Add the commands + parser + test**
+- [x] **Step 1: Add the commands + parser + test**
 
 In `commands.rs`, after the `lore_sign_in` function:
 
@@ -96,12 +96,12 @@ In `lib.rs`, add to `generate_handler![...]` after `commands::lore_undo_commit,`
         commands::lore_sign_out,
 ```
 
-- [ ] **Step 2: Run Rust tests**
+- [x] **Step 2: Run Rust tests**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml`
 Expected: PASS incl. `identity_tests`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/commands.rs src-tauri/src/lib.rs
@@ -115,7 +115,7 @@ git commit -m "feat(auth): lore_identity and real lore_sign_out commands"
 **Files:**
 - Modify: `src-tauri/src/commands.rs:52-102` (`StatusResultDto`, `status_from`)
 
-- [ ] **Step 1: Extend the DTO + parser**
+- [x] **Step 1: Extend the DTO + parser**
 
 ```rust
 #[derive(Serialize, PartialEq, Debug)]
@@ -142,7 +142,7 @@ In `status_from`, after the `remote_ahead` computation:
 
 and include the three fields in the returned struct.
 
-- [ ] **Step 2: Fix compilation of existing tests**
+- [x] **Step 2: Fix compilation of existing tests**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml`
 Any test constructing `StatusResultDto` or asserting on `status_from` output needs the new fields (`revision_number: <from fixture>`, `remote_available: true`, `remote_authorized: true` for the existing fixtures). Add one assertion covering an offline fixture:
@@ -166,7 +166,7 @@ Any test constructing `StatusResultDto` or asserting on `status_from` output nee
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/commands.rs
@@ -180,7 +180,7 @@ git commit -m "feat(status): expose revisionNumber and remote availability/autho
 **Files:**
 - Modify: `src-tauri/src/commands.rs:295-325` (`lore_history`)
 
-- [ ] **Step 1: Add the pure rule + wire it**
+- [x] **Step 1: Add the pure rule + wire it**
 
 Above `lore_history`:
 
@@ -204,7 +204,7 @@ and after the existing cursor-dedup/labels block (end of the closure, before `Ok
         page.next_cursor = next_cursor_for(raw_len, length, page.next_cursor.take());
 ```
 
-- [ ] **Step 2: Add tests**
+- [x] **Step 2: Add tests**
 
 ```rust
 #[cfg(test)]
@@ -225,7 +225,7 @@ mod cursor_tests {
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml` — expected PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/commands.rs
@@ -239,7 +239,7 @@ git commit -m "fix(history): stop pagination when a page comes back short"
 **Files:**
 - Modify: `src-tauri/src/commands.rs:61-64` (`BINARY_EXTS`/`is_binary_path`) and callers `status_from` (~line 91), `merge_conflicts_from` (~line 859), `lore_status`, `lore_merge_conflicts`, plus their tests
 
-- [ ] **Step 1: Replace the detector**
+- [x] **Step 1: Replace the detector**
 
 Replace `BINARY_EXTS` + `is_binary_path` with:
 
@@ -291,14 +291,14 @@ fn is_binary(repo_root: &std::path::Path, rel_path: &str) -> bool {
 }
 ```
 
-- [ ] **Step 2: Update the two parsers + their callers**
+- [x] **Step 2: Update the two parsers + their callers**
 
 - `fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResultDto` — inside, `is_binary: is_binary(repo_root, &path)`.
 - `lore_status`: `Ok(status_from(&events, std::path::Path::new(&repo_path)))`.
 - `fn merge_conflicts_from(events: &[LoreEvent], repo_root: &std::path::Path)` — same substitution; `lore_merge_conflicts` passes `std::path::Path::new(&repo_path)`.
 - Update every existing test call site: pass `std::path::Path::new("")` (fixture paths don't exist on disk, so list-only decisions apply — existing fixtures use `.txt`/`.uasset`, still deterministic).
 
-- [ ] **Step 3: Add detector tests**
+- [x] **Step 3: Add detector tests**
 
 ```rust
 #[cfg(test)]
@@ -337,11 +337,11 @@ mod binary_tests {
 }
 ```
 
-- [ ] **Step 4: Run Rust tests**
+- [x] **Step 4: Run Rust tests**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml` — expected PASS (fix any remaining signature call sites it flags).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/commands.rs
@@ -355,7 +355,7 @@ git commit -m "feat(files): game-format extension lists plus NUL content sniff f
 **Files:**
 - Modify: `src-tauri/src/config.rs:7-14` (DTO) and `config.rs:67-79` (round-trip test)
 
-- [ ] **Step 1: Add the field**
+- [x] **Step 1: Add the field**
 
 ```rust
 #[derive(Serialize, Deserialize, Default, PartialEq, Debug, Clone)]
@@ -372,7 +372,7 @@ pub struct AppConfigDto {
 
 In the `round_trip` test, add `display_name: Some("Jimmy D.".into()),` to the constructed config. The `missing_file_is_default` / `corrupt_file_is_default` tests need no change (`Default` covers the new field).
 
-- [ ] **Step 2: Run + commit**
+- [x] **Step 2: Run + commit**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml` — expected PASS.
 
@@ -389,7 +389,7 @@ git commit -m "feat(config): persist optional displayName"
 - Create: `src/lib/identity.ts`, `src/lib/identity.test.ts`, `src/lib/commitMessage.ts`, `src/lib/commitMessage.test.ts`
 - Modify: `src/lib/types.ts`, `src/lib/mock.ts`, `src/lib/tauri.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/identity.test.ts`:
 
@@ -446,11 +446,11 @@ describe('composeCommitMessage', () => {
 })
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `npm test` — expected FAIL (modules missing).
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 `src/lib/identity.ts`:
 
@@ -487,11 +487,11 @@ export function composeCommitMessage(summary: string, description: string): stri
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `npm test` — expected PASS.
 
-- [ ] **Step 5: Extend the API surface (types + mock + tauri together, so `check` stays green)**
+- [x] **Step 5: Extend the API surface (types + mock + tauri together, so `check` stays green)**
 
 `src/lib/types.ts`:
 - Add:
@@ -563,7 +563,7 @@ export interface Identity {
 
 (and add `Identity` to the type import list).
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -579,7 +579,7 @@ git commit -m "feat(api): identity, repo file picker, remote flags - real sign-o
 **Files:**
 - Modify: `src/lib/session.svelte.ts`, `src/App.svelte:37-40`
 
-- [ ] **Step 1: Session state + actions**
+- [x] **Step 1: Session state + actions**
 
 In `session.svelte.ts`:
 - Import `Identity` from `./types`.
@@ -605,7 +605,7 @@ export async function setDisplayName(name: string) {
 }
 ```
 
-- [ ] **Step 2: Load on repo change**
+- [x] **Step 2: Load on repo change**
 
 In `App.svelte`, extend the existing repo-change effect:
 
@@ -621,7 +621,7 @@ In `App.svelte`, extend the existing repo-change effect:
 
 (import `loadIdentity` from `./lib/session.svelte`).
 
-- [ ] **Step 3: Verify + commit**
+- [x] **Step 3: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -637,7 +637,7 @@ git commit -m "feat(session): load real identity per repo, persist display name"
 **Files:**
 - Modify: `src/lib/Changes.svelte`
 
-- [ ] **Step 1: Bind + compose**
+- [x] **Step 1: Bind + compose**
 
 - Import: `import { composeCommitMessage } from './commitMessage'`
 - Add state: `let description = $state('')`
@@ -653,7 +653,7 @@ git commit -m "feat(session): load real identity per repo, persist display name"
   }
 ```
 
-- [ ] **Step 2: Verify + commit**
+- [x] **Step 2: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -670,7 +670,7 @@ git commit -m "fix(changes): commit the description instead of dropping it"
 - Create: `src/lib/AvatarMenu.svelte`
 - Modify: `src/lib/TitleBar.svelte`
 
-- [ ] **Step 1: Create `src/lib/AvatarMenu.svelte`**
+- [x] **Step 1: Create `src/lib/AvatarMenu.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -735,7 +735,7 @@ git commit -m "fix(changes): commit the description instead of dropping it"
 </style>
 ```
 
-- [ ] **Step 2: Wire the TitleBar avatar**
+- [x] **Step 2: Wire the TitleBar avatar**
 
 In `TitleBar.svelte`:
 - Imports: replace `signOut` import with `session` only (`signOut` moves into the menu); add `import AvatarMenu from './AvatarMenu.svelte'` and `import { initialsFor } from './identity'`.
@@ -752,7 +752,7 @@ In `TitleBar.svelte`:
 
 - CSS: add `.avatarzone { position: relative; }` and `.avatar.open { outline: 2px solid var(--accent); }`.
 
-- [ ] **Step 3: Verify + commit**
+- [x] **Step 3: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -768,7 +768,7 @@ git commit -m "feat(identity): avatar menu with real identity, editable display 
 **Files:**
 - Modify: `src/lib/History.svelte`, `src/lib/types.ts:35-37`, `src/lib/mock.ts:39`
 
-- [ ] **Step 1: History edits**
+- [x] **Step 1: History edits**
 
 - Delete row-counts span (`History.svelte:174`) — the whole `<span class="counts">…` line inside `.grow`. Keep the detail-panel counts (line 197) and the shared `.counts` CSS.
 - Identity mapping — replace `avatar()` and `shortName`:
@@ -790,13 +790,13 @@ git commit -m "feat(identity): avatar menu with real identity, editable display 
 
 (add `import { initialsFor } from './identity'`).
 
-- [ ] **Step 2: Retire the dead Commit fields**
+- [x] **Step 2: Retire the dead Commit fields**
 
 - `types.ts`: delete `adds`, `mods`, `dels` from `Commit`.
 - `mock.ts`: delete the `adds: …, mods: …, dels: …` line in `mk()` (`mock.ts:39`).
 - Rust `CommitDto` keeps nothing to change (its `adds/mods/dels` fields must also go: remove them from the struct and from the `commits.push(CommitDto { … })` literal in `history_from`).
 
-- [ ] **Step 3: Verify + commit**
+- [x] **Step 3: Verify + commit**
 
 Run: `npm run check && npm test && cargo test --manifest-path src-tauri/Cargo.toml` — expected PASS.
 
@@ -812,7 +812,7 @@ git commit -m "fix(history): real 'you' identity in rows, drop the never-populat
 **Files:**
 - Modify: `src/lib/StatusBar.svelte`, `src/lib/TitleBar.svelte`
 
-- [ ] **Step 1: StatusBar three states**
+- [x] **Step 1: StatusBar three states**
 
 Replace the first `.item` block of `StatusBar.svelte` with:
 
@@ -870,7 +870,7 @@ CSS additions:
 
 (`signOut` returns to the SignIn screen via `session.signedIn = false` — the existing App branch.)
 
-- [ ] **Step 2: Disable Sync/Push while unreachable**
+- [x] **Step 2: Disable Sync/Push while unreachable**
 
 In `TitleBar.svelte`:
 
@@ -881,7 +881,7 @@ In `TitleBar.svelte`:
 - Sync button: `disabled={!!repo.busy || noRemote}` and `title={noRemote ? 'Server unreachable — sync is unavailable' : 'Sync'}`.
 - Push button: `disabled={!!repo.busy || noRemote || (repo.status?.localAhead ?? 0) === 0}` and `title={noRemote ? 'Server unreachable — push is unavailable' : 'Push'}`.
 
-- [ ] **Step 3: Verify + commit**
+- [x] **Step 3: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -897,7 +897,7 @@ git commit -m "feat(status): offline and session-expired states, rev number, act
 **Files:**
 - Modify: `src/lib/Locks.svelte`
 
-- [ ] **Step 1: Wire the picker**
+- [x] **Step 1: Wire the picker**
 
 Script additions:
 
@@ -937,7 +937,7 @@ Script additions:
 
 Button: `<button class="ghost" onclick={lockNewFile} disabled={locking || !!repo.busy}>{locking ? 'Locking…' : '+ Lock a file…'}</button>`
 
-- [ ] **Step 2: Verify + commit**
+- [x] **Step 2: Verify + commit**
 
 Run: `npm run check && npm test` — expected PASS.
 
@@ -953,7 +953,7 @@ git commit -m "fix(locks): make 'Lock a file' pick and lock a repo file"
 **Files:**
 - Modify: `src/lib/FilePreview.svelte:46-49` (`TYPES`)
 
-- [ ] **Step 1: Extend the table**
+- [x] **Step 1: Extend the table**
 
 ```ts
   const TYPES: Record<string, string> = {
@@ -969,7 +969,7 @@ git commit -m "fix(locks): make 'Lock a file' pick and lock a repo file"
   }
 ```
 
-- [ ] **Step 2: Verify + commit**
+- [x] **Step 2: Verify + commit**
 
 Run: `npm run check` — expected PASS.
 
@@ -982,23 +982,23 @@ git commit -m "feat(preview): type names for common game and DCC formats"
 
 ### Task 14: Full verification
 
-- [ ] **Step 1: Full suites** — `npm run check && npm test && cargo test --manifest-path src-tauri/Cargo.toml` — all PASS.
+- [x] **Step 1: Full suites** — `npm run check && npm test && cargo test --manifest-path src-tauri/Cargo.toml` — all PASS.
 
-- [ ] **Step 2: Browser pass (mock)** — `npm run dev` + preview tools:
+- [x] **Step 2: Browser pass (mock)** — `npm run dev` + preview tools:
   1. Avatar shows « JD » (jane.doe) ; menu ouvre ; display name « Jimmy D. » → initiales changent, persistées après reload.
   2. Commit avec Summary + Description → mock accepte ; champs vidés.
   3. StatusBar montre « Synced · rev 5 ».
   4. Locks : « + Lock a file… » verrouille le fichier mock et il apparaît dans la liste.
   5. History : plus de compteurs sur les lignes ; auteurs 'you' avec les bonnes initiales.
 
-- [ ] **Step 3: Real app pass** — `npx tauri dev` sur `lore-test-repo` :
+- [x] **Step 3: Real app pass** — `npx tauri dev` sur `lore-test-repo` :
   1. Avatar = initiales dérivées de l'email réel ; menu affiche l'email.
   2. Commit avec description → `lore history` montre le corps du message.
   3. « + Lock a file… » verrouille un fichier réel (puis unlock).
   4. History scrolle jusqu'au bout sans requêtes en boucle.
   5. Sign out → retour à SignIn ; relance → toujours déconnecté (`lore auth list` vide d'identité valide).
 
-- [ ] **Step 4: Commit any fixes** discovered during verification.
+- [x] **Step 4: Commit any fixes** discovered during verification.
 
 ---
 
