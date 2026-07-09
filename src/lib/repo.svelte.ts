@@ -1,5 +1,6 @@
 import { api } from './api'
 import { session } from './session.svelte'
+import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction } from './toast'
 import type { Branch, Commit, LockEntry, StatusResult } from './types'
 
@@ -88,6 +89,7 @@ export async function refreshStatus(silent = false) {
   if (!silent) repo.busy = 'status'
   try {
     repo.status = await api.getStatus(path)
+    clearThumbs() // files may have changed on disk — row thumbnails re-resolve via the mtime-keyed cache
   } catch (e) { toastError("Couldn't load changes", e) }
   finally { if (!silent) repo.busy = '' }
   // Locks + branches hit a remote query that can be slow/offline — fetch them in

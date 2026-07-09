@@ -22,8 +22,8 @@ export interface StatusResult {
 }
 
 export interface PreviewData {
-  kind: 'image' | 'audio' | 'none'
-  /** image: PNG data URL of the thumbnail; audio: streamable URL; none: null. */
+  kind: 'image' | 'audio' | 'model' | 'none'
+  /** image: PNG data URL of the thumbnail; audio/model: streamable URL; none: null. */
   url: string | null
   /** Source dimensions (image only). */
   width?: number
@@ -115,8 +115,8 @@ export interface LoreApi {
   pickRepoFile(repoPath: string): Promise<string | null>
   /** Identity per the current repo's server; rejects when no repo/no session. */
   getIdentity(repoPath: string): Promise<Identity>
-  /** Working-copy visual/audio preview of a repo file. */
-  getPreview(repoPath: string, path: string): Promise<PreviewData>
+  /** Working-copy visual/audio preview of a repo file. `maxPx` bounds image thumbnails (default 512). */
+  getPreview(repoPath: string, path: string, maxPx?: number): Promise<PreviewData>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>

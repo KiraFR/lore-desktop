@@ -25,10 +25,11 @@ export const tauriApi: LoreApi = {
   },
   getIdentity: (repoPath) => invoke<Identity>('lore_identity', { repoPath }),
   signOut: () => invoke<void>('lore_sign_out'),
-  getPreview: async (repoPath, path): Promise<PreviewData> => {
+  getPreview: async (repoPath, path, maxPx): Promise<PreviewData> => {
     const r = await invoke<{ kind: string; dataUrl: string | null; width?: number | null; height?: number | null }>(
-      'lore_preview', { repoPath, path, maxPx: 512 })
+      'lore_preview', { repoPath, path, maxPx: maxPx ?? 512 })
     if (r.kind === 'audio') return { kind: 'audio', url: convertFileSrc(`${repoPath}/${path}`) }
+    if (r.kind === 'model') return { kind: 'model', url: convertFileSrc(`${repoPath}/${path}`) }
     if (r.kind === 'image' && r.dataUrl)
       return { kind: 'image', url: r.dataUrl, width: r.width ?? undefined, height: r.height ?? undefined }
     return { kind: 'none', url: null }

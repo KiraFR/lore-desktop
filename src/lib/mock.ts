@@ -1,3 +1,4 @@
+import { isPreviewableImage } from './previewKind'
 import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
@@ -19,8 +20,9 @@ export function mockWavDataUrl(): string {
   return `data:audio/wav;base64,${btoa(bin)}`
 }
 
-const PREVIEW_IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif|tga|tiff?|dds|exr|hdr|psd)$/i
 const PREVIEW_AUDIO_RE = /\.(wav|ogg|mp3|flac)$/i
+const PREVIEW_MODEL_RE = /\.(glb|gltf|obj|fbx)$/i
+const CUBE_OBJ = 'v -1 -1 -1\nv 1 -1 -1\nv 1 1 -1\nv -1 1 -1\nv -1 -1 1\nv 1 -1 1\nv 1 1 1\nv -1 1 1\nf 1 2 3 4\nf 5 8 7 6\nf 1 5 6 2\nf 2 6 7 3\nf 3 7 8 4\nf 5 1 4 8\n'
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
@@ -93,6 +95,7 @@ function seedFiles(): ChangedFile[] {
     { path: 'Content/Environment/T_Cliff_D.uasset', action: 'modify', isBinary: true, size: 4404019, oldSize: 4093640, lockedBy: 'Maya R' },
     { path: 'Content/UI/T_Icon_Sword.png', action: 'modify', isBinary: true, size: 182044, oldSize: 175200 },
     { path: 'Audio/sfx_hit.wav', action: 'add', isBinary: true, size: 912384 },
+    { path: 'Content/Props/SM_Crate.obj', action: 'add', isBinary: true, size: 20480 },
     { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241, oldSize: 7980 },
     { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204, oldSize: 1180 },
     { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512, oldSize: 500 },
@@ -168,7 +171,13 @@ export const mock: LoreApi = {
   async getPreview(_repoPath: string, path: string) {
     await delay(200)
     if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: mockWavDataUrl() } as PreviewData
-    if (PREVIEW_IMAGE_RE.test(path)) {
+    if (PREVIEW_MODEL_RE.test(path)) {
+      // Only .obj carries a payload (a tiny cube — OBJ is plain text); other
+      // model formats fall back to the placeholder in dev.
+      const url = /\.obj$/i.test(path) ? `data:text/plain,${encodeURIComponent(CUBE_OBJ)}` : null
+      return { kind: 'model', url } as PreviewData
+    }
+    if (isPreviewableImage(path)) {
       const name = path.split('/').pop() ?? path
       const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">` +
