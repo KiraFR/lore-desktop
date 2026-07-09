@@ -8,6 +8,7 @@
   import AvatarMenu from './AvatarMenu.svelte'
 
   const repoName = $derived(session.config.currentRepo?.split(/[\\/]/).pop() || 'Select a repository')
+  const noRemote = $derived(repo.status ? !repo.status.remoteAvailable || !repo.status.remoteAuthorized : false)
   const initials = $derived(initialsFor(session.config.displayName, session.identity?.email))
   let repoOpen = $state(false)
   let repoZoneEl = $state<HTMLDivElement>()
@@ -67,12 +68,12 @@
   <span class="spacer"></span>
 
   {#if session.config.currentRepo}
-    <button class="action" onclick={sync} disabled={!!repo.busy} title="Sync">
+    <button class="action" onclick={sync} disabled={!!repo.busy || noRemote} title={noRemote ? 'Server unreachable — sync is unavailable' : 'Sync'}>
       <Icon name="sync" size={16} />
       <span>{repo.busy === 'sync' ? 'Syncing…' : 'Sync'}</span>
       {#if repo.status?.remoteAhead}<span class="count">{repo.status.remoteAhead}</span>{/if}
     </button>
-    <button class="action accent" onclick={push} disabled={!!repo.busy || (repo.status?.localAhead ?? 0) === 0} title="Push">
+    <button class="action accent" onclick={push} disabled={!!repo.busy || noRemote || (repo.status?.localAhead ?? 0) === 0} title={noRemote ? 'Server unreachable — push is unavailable' : 'Push'}>
       <Icon name="push" size={16} />
       <span>{repo.busy === 'push' ? 'Pushing…' : 'Push'}</span>
       {#if repo.status?.localAhead}<span class="count on">{repo.status.localAhead}</span>{/if}
