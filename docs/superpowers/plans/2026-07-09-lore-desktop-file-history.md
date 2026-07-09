@@ -12,7 +12,7 @@
 
 **Files:** Modify `src-tauri/src/commands.rs` (after `lore_commit_files`), `src-tauri/src/lib.rs`
 
-- [ ] **Step 1:** Add DTO + parser + resolver + command:
+- [x] **Step 1:** Add DTO + parser + resolver + command:
 
 ```rust
 #[derive(Serialize, PartialEq, Debug)]
@@ -145,7 +145,7 @@ mod file_history_tests {
 
 `lib.rs`: register `commands::lore_file_history`.
 
-- [ ] **Step 2:** `cargo test` PASS → commit `feat(files): per-file revision history command with author resolution`.
+- [x] **Step 2:** `cargo test` PASS → commit `feat(files): per-file revision history command with author resolution`.
 
 ---
 
@@ -153,7 +153,7 @@ mod file_history_tests {
 
 **Files:** Modify `src/lib/types.ts`, `src/lib/tauri.ts`, `src/lib/mock.ts`, `src/lib/FilePreview.svelte`
 
-- [ ] **Step 1:** types.ts :
+- [x] **Step 1:** types.ts :
 
 ```ts
 export interface FileRevision {
@@ -170,9 +170,9 @@ export interface FileRevision {
 
 `LoreApi`: `/** Revision timeline of one file (newest first). */ getFileHistory(repoPath: string, path: string): Promise<FileRevision[]>`.
 
-- [ ] **Step 2:** tauri.ts : `getFileHistory: (repoPath, path) => invoke<FileRevision[]>('lore_file_history', { repoPath, path }),` — mock.ts : trois révisions synthétiques (modify 'you' 2 h, modify maya 3 j, add maya 7 j) avec tailles décroissantes ; `whenMs: Date.now() - …`.
+- [x] **Step 2:** tauri.ts : `getFileHistory: (repoPath, path) => invoke<FileRevision[]>('lore_file_history', { repoPath, path }),` — mock.ts : trois révisions synthétiques (modify 'you' 2 h, modify maya 3 j, add maya 7 j) avec tailles décroissantes ; `whenMs: Date.now() - …`.
 
-- [ ] **Step 3:** FilePreview — état `fileHistory/fhLoading/fhError/lastFhPath`, effet anti-course sur `file` (tous types de fichiers), section sous `<dl class="meta">` :
+- [x] **Step 3:** FilePreview — état `fileHistory/fhLoading/fhError/lastFhPath`, effet anti-course sur `file` (tous types de fichiers), section sous `<dl class="meta">` :
 
 ```svelte
       <div class="fhhead">History{#if fileHistory.length} · {fileHistory.length} revisions{/if}</div>
@@ -201,12 +201,12 @@ export interface FileRevision {
 
 avec `glyph` (map action → glyphe coloré, comme Changes), `authorLabel` (`you` si email = identité, sinon partie locale), CSS lignes compactes.
 
-- [ ] **Step 4:** `npm run check && npm test` PASS → commit `feat(preview): per-asset revision history in the file panel`.
+- [x] **Step 4:** `npm run check && npm test` PASS → commit `feat(preview): per-asset revision history in the file panel`.
 
 ---
 
 ### Task 3: Vérification
 
-- [ ] Mock : sélection d'un fichier → 3 révisions, auteurs 'you'/maya, tooltip date absolue.
-- [ ] App réelle : `README.md` de `lore-test-repo` → révisions réelles avec messages, auteur résolu en email, tailles.
-- [ ] Suites complètes PASS ; commit fixes.
+- [x] Mock : sélection d'un fichier → 3 révisions, auteurs 'you'/maya, tooltip date absolue.
+- [x] App réelle : `README.md` de `lore-test-repo` → révisions réelles avec messages, auteur résolu en email, tailles.
+- [x] Suites complètes PASS ; commit fixes.
