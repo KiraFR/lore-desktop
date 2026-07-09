@@ -272,6 +272,11 @@ export const mock: LoreApi = {
     if (!s.files.some((f) => f.path === 'Source/Player/Undone.cpp'))
       s.files = [{ path: 'Source/Player/Undone.cpp', action: 'modify', isBinary: false, size: 1024 }, ...s.files]
   },
+  async amendCommit(_repoPath: string, message: string) {
+    await delay(300)
+    // BIG_HISTORY[0] is the newest commit — the only one amend may rewrite.
+    BIG_HISTORY[0].message = message
+  },
   async getHistory(_repoPath: string, length: number, cursor?: string) {
     await delay(280)
     const start = cursor ? BIG_HISTORY.findIndex((c) => c.id === cursor) + 1 : 0

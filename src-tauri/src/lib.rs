@@ -49,6 +49,7 @@ pub fn run() {
         commands::lore_merge_abort,
         commands::lore_discard_file,
         commands::lore_undo_commit,
+        commands::lore_amend,
         commands::lore_identity,
         commands::lore_sign_out,
         commands::lore_file_history,

@@ -5,6 +5,7 @@
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { initialsFor } from './identity'
   import { confirmAction } from './confirm'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import type { CommitFile } from './types'
 
@@ -32,7 +33,7 @@
     if (!c || !repoPath) { detailFiles = []; detailLoading = false; detailError = false; lastDetailId = ''; return }
     const sameId = c.id === lastDetailId
     lastDetailId = c.id
-    if (!sameId) { detailLoading = true; detailFiles = [] }
+    if (!sameId) { detailLoading = true; detailFiles = []; editing = false }
     detailError = false
     const parent = c.parents[0] ?? ''
     api
@@ -68,6 +69,35 @@
       'Undo commit',
     )
     if (ok) undoCommit(selected.parents[0])
+  }
+
+  // The last local (unpushed) commit's message can be amended. Unlike undo, this
+  // doesn't need a clean working tree — only the message is rewritten.
+  const canEdit = $derived(
+    !!selected && selected.id === history.commits[0]?.id &&
+    (repo.status?.localAhead ?? 0) > 0,
+  )
+
+  let editing = $state(false)
+  let editMsg = $state('')
+
+  function startEdit() {
+    if (!selected || !canEdit) return
+    editMsg = selected.message
+    editing = true
+  }
+
+  async function saveEdit() {
+    const path = session.config.currentRepo
+    const msg = editMsg.trim()
+    if (!path || !canEdit || !msg || repo.busy) return
+    try {
+      await api.amendCommit(path, msg)
+      editing = false
+      refreshHistory(true)
+    } catch (e) {
+      toastError('Amend failed', e)
+    }
   }
 
   // On entering the view, refresh in the background: cached commits stay visible
@@ -196,13 +226,27 @@
       <header class="dh">
         <span class="ava lg" style="background:{av.bg};color:{av.fg}" title={selected.author}>{av.initials}</span>
         <div><div class="dwho">{shortName(selected.author)}</div><div class="rev" title={new Date(selected.whenMs).toLocaleString()}>{selected.when} · #{selected.rev} · {selected.id}</div></div>
+        {#if canEdit}
+          <button class="undo" onclick={startEdit} disabled={!!repo.busy || editing} title="Rewrite this commit's message">
+            <Icon name="edit" size={13} /> Edit message
+          </button>
+        {/if}
         {#if canUndo}
           <button class="undo" onclick={doUndo} disabled={!!repo.busy} title="Undo this commit — its changes go back to Changes">
             <Icon name="history" size={13} /> Undo commit
           </button>
         {/if}
       </header>
-      <p class="dmsg">{selected.message}</p>
+      {#if editing && canEdit}
+        <div class="editrow">
+          <input bind:value={editMsg} disabled={!!repo.busy} placeholder="Commit message"
+                 onkeydown={(e) => { if (e.key === 'Enter') saveEdit(); else if (e.key === 'Escape') editing = false }} />
+          <button class="save" onclick={saveEdit} disabled={!!repo.busy || !editMsg.trim()}>Save</button>
+          <button class="cancel" onclick={() => (editing = false)}>Cancel</button>
+        </div>
+      {:else}
+        <p class="dmsg">{selected.message}</p>
+      {/if}
       <div class="fchg">
         Files changed · {detailFiles.length} {detailFiles.length === 1 ? 'file' : 'files'}
         <span class="counts">{#if detailCounts.adds}<span class="a">+{detailCounts.adds}</span>{/if}{#if detailCounts.mods}<span class="m">~{detailCounts.mods}</span>{/if}{#if detailCounts.dels}<span class="d">−{detailCounts.dels}</span>{/if}</span>
@@ -250,8 +294,13 @@
   .dh { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
   .dwho { font-size: 13px; font-weight: 500; }
   .rev { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-  .undo { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11.5px; flex-shrink: 0; }
+  .undo { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11.5px; flex-shrink: 0; }
+  .dh .undo:first-of-type { margin-left: auto; } /* whichever action shows first hugs the right edge */
   .dmsg { font-size: 13.5px; margin: 0 0 14px; }
+  .editrow { display: flex; gap: 6px; margin: 0 0 14px; }
+  .editrow input { flex: 1; min-width: 0; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12.5px; }
+  .editrow .save { padding: 6px 10px; font-size: 12px; background: var(--accent); color: var(--on-accent); border: none; border-radius: 6px; }
+  .editrow .cancel { padding: 6px 10px; font-size: 12px; }
   .fchg { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
   .floading { font-size: 12.5px; padding: 6px 0; }
   .fl { list-style: none; margin: 0; padding: 0; }

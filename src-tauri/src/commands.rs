@@ -633,6 +633,18 @@ pub async fn lore_commit(repo_path: String, message: String, exclude: Vec<String
     .await
 }
 
+/// Rewrite the last local commit's message via `lore revision amend <MESSAGE>`.
+/// Only valid for an unpushed commit — the frontend gates on `localAhead > 0`.
+#[tauri::command]
+pub async fn lore_amend(repo_path: String, message: String) -> Result<(), String> {
+    require_commit_message(&message)?;
+    blocking(move || {
+        run_lore(&["revision", "amend", &message, "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn lore_push(repo_path: String) -> Result<(), String> {
     blocking(move || {
