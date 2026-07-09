@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChangedFile, DiffLine } from './types'
+  import type { ChangedFile, DiffLine, PreviewData } from './types'
   import { repo, setLock, discardFile } from './repo.svelte'
   import { session } from './session.svelte'
   import { api } from './api'
@@ -34,6 +34,23 @@
       .then((d) => { if (file?.path === f.path) diff = d })
       .catch(() => { if (file?.path === f.path) diffError = true })
       .finally(() => { if (file?.path === f.path) diffLoading = false })
+  })
+
+  // Working-copy preview (image thumbnail / audio) for binary files. Same
+  // anti-race pattern as the diff: check the selection still matches on arrival.
+  let preview = $state<PreviewData | null>(null)
+  let lastPreviewPath = ''
+
+  $effect(() => {
+    const f = file
+    const repoPath = session.config.currentRepo
+    if (!f || !f.isBinary || f.action === 'delete' || !repoPath) { preview = null; lastPreviewPath = ''; return }
+    const same = f.path === lastPreviewPath
+    lastPreviewPath = f.path
+    if (!same) preview = null
+    api.getPreview(repoPath, f.path)
+      .then((p) => { if (file?.path === f.path) preview = p })
+      .catch(() => { if (file?.path === f.path) preview = null })
   })
 
   const KB = 1024, MB = 1024 * 1024
@@ -92,21 +109,34 @@
       </header>
 
       {#if file.isBinary}
-        <div class="cmp">
-          {#if file.action !== 'add'}
-            <figure class="cbox">
-              <div class="thumb before"><Icon name="image" size={26} /></div>
-              <figcaption>Before · previous revision</figcaption>
-            </figure>
+        {#if preview?.kind === 'audio' && preview.url}
+          <div class="audio"><audio controls src={preview.url}></audio></div>
+          <p class="note muted"><Icon name="info" size={14} /> Audio asset — plays the working copy.</p>
+        {:else}
+          <div class="cmp">
+            {#if file.action !== 'add'}
+              <figure class="cbox">
+                <div class="thumb before"><Icon name="image" size={26} /></div>
+                <figcaption>Before · previous revision</figcaption>
+              </figure>
+            {/if}
+            {#if file.action !== 'delete'}
+              <figure class="cbox">
+                {#if preview?.kind === 'image' && preview.url}
+                  <div class="thumb after img"><img src={preview.url} alt={baseName(file.path)} /></div>
+                {:else}
+                  <div class="thumb after"><Icon name="image" size={26} /></div>
+                {/if}
+                <figcaption class="aft">{file.action === 'add' ? 'New file' : 'After · working copy'}</figcaption>
+              </figure>
+            {/if}
+          </div>
+          {#if preview?.kind === 'image'}
+            <p class="note muted"><Icon name="info" size={14} /> Previous-revision preview needs server support — working copy only.</p>
+          {:else}
+            <p class="note muted"><Icon name="info" size={14} /> Binary asset — visual compare, no text diff.</p>
           {/if}
-          {#if file.action !== 'delete'}
-            <figure class="cbox">
-              <div class="thumb after"><Icon name="image" size={26} /></div>
-              <figcaption class="aft">{file.action === 'add' ? 'New file' : 'After · working copy'}</figcaption>
-            </figure>
-          {/if}
-        </div>
-        <p class="note muted"><Icon name="info" size={14} /> Binary asset — visual compare, no text diff.</p>
+        {/if}
       {:else if diffLoading}
         <div class="textnote muted"><Icon name="file" size={22} /><p>Loading diff…</p></div>
       {:else if diffError}
@@ -129,6 +159,9 @@
       <dl class="meta">
         <div><dt>Type</dt><dd>{typeName(file.path)}</dd></div>
         <div><dt>Size</dt><dd>{sizeText}</dd></div>
+        {#if preview?.width && preview?.height}
+          <div><dt>Dimensions</dt><dd>{preview.width} × {preview.height}</dd></div>
+        {/if}
         <div>
           <dt>Lock</dt>
           <dd>
@@ -169,6 +202,10 @@
   .thumb { height: 150px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); }
   .thumb.before { background: #2b2f35; }
   .thumb.after { background: #33475f; }
+  .thumb.img { padding: 0; overflow: hidden; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
+  .thumb.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .audio { padding: 10px 0 2px; }
+  .audio audio { width: 100%; }
   figcaption { font-size: 11px; color: var(--text-muted); margin-top: 7px; text-align: center; }
   figcaption.aft { color: var(--accent-text); }
   .note { display: flex; align-items: center; gap: 7px; font-size: 11px; margin: 12px 0 4px; }
