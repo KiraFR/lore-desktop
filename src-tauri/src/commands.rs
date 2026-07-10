@@ -1,4 +1,5 @@
 use crate::lore::{events_with_tag, run_lore, run_lore_streaming, LoreEvent};
+use tauri::Emitter;
 
 /// Run a blocking body on the async runtime's worker pool so a slow or hung
 /// `lore` call never blocks the UI thread — the invoke promise just pends.
@@ -545,6 +546,7 @@ pub struct OpProgressPayload {
 /// slice-B-observed tag (unconfirmed pending the Task 13 capture); any
 /// `…Progress` event with a `done`/`current` count qualifies, so the sync/push
 /// equivalents discovered at capture time are relayed too.
+// TODO(Task 13): tighten the suffix heuristic to an explicit tag allow-list once the capture pins the real names.
 fn op_progress_from(ev: &LoreEvent) -> Option<(u64, Option<u64>)> {
     if !ev.tag_name.ends_with("Progress") {
         return None;
@@ -559,25 +561,53 @@ fn op_progress_from(ev: &LoreEvent) -> Option<(u64, Option<u64>)> {
 /// (bytes or files); None keeps the UI honest (percentage only, no unit label).
 const OP_PROGRESS_UNIT: Option<&'static str> = None;
 
-/// Run a long lore operation on the streaming runner, relaying every progress
-/// event to the webview as `lore://op-progress`. Stall (60 s of silence) kills
-/// the child and surfaces the same error toast as any failed operation.
+/// Minimum spacing between two `lore://op-progress` emits for the same
+/// operation, so a fast-ticking child (thousands of small files) doesn't
+/// flood the webview IPC channel.
+const OP_PROGRESS_THROTTLE: std::time::Duration = std::time::Duration::from_millis(33);
+
+/// Whether a progress tick should be emitted now: the very first tick and the
+/// final tick (`done >= total`, once `total` is known) always go through so
+/// the UI never stalls visually short of 100%; everything else is throttled
+/// to at most one emit per [`OP_PROGRESS_THROTTLE`].
+fn should_emit(last: Option<std::time::Instant>, done: u64, total: Option<u64>) -> bool {
+    let is_final = total.is_some_and(|t| done >= t);
+    let due = last.is_none_or(|t| t.elapsed() >= OP_PROGRESS_THROTTLE);
+    is_final || due
+}
+
+/// Run a long lore operation on the streaming runner, relaying progress
+/// events to the webview as `lore://op-progress`. Emits are throttled to
+/// ~30 Hz (see [`OP_PROGRESS_THROTTLE`]) to bound IPC volume on fast-ticking
+/// operations, but the final tick (`done == total`) is always emitted
+/// unthrottled so the progress bar never visually stalls short of 100%.
+/// Stall (60 s of silence) kills the child and surfaces the same error toast
+/// as any failed operation.
 fn run_lore_op(
     app: &tauri::AppHandle,
     kind: &'static str,
     op_id: &str,
     args: &[&str],
 ) -> Result<Vec<LoreEvent>, String> {
-    use tauri::Emitter;
+    let mut last_emit: Option<std::time::Instant> = None;
     let mut on_event = |ev: &LoreEvent| {
         if let Some((done, total)) = op_progress_from(ev) {
-            let _ = app.emit(
-                "lore://op-progress",
-                OpProgressPayload { op_id: op_id.to_string(), kind, done, total, unit: OP_PROGRESS_UNIT },
-            );
+            if should_emit(last_emit, done, total) {
+                last_emit = Some(std::time::Instant::now());
+                let _ = app.emit(
+                    "lore://op-progress",
+                    OpProgressPayload { op_id: op_id.to_string(), kind, done, total, unit: OP_PROGRESS_UNIT },
+                );
+            }
         }
     };
     run_lore_streaming(args, &mut on_event)
+}
+
+/// `op_id` is required once the frontend sends it (Task 16); until then a
+/// missing id degrades to the empty string rather than failing the op.
+fn op_id_or_default(op_id: Option<String>) -> String {
+    op_id.unwrap_or_default()
 }
 
 /// Clone `<server_url>/<repo_id>` into `<dest_parent>/<repo_name>` and return
@@ -595,7 +625,7 @@ pub async fn lore_clone(
     op_id: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        let op_id = op_id.unwrap_or_default(); // required once the frontend sends it (Task 16)
+        let op_id = op_id_or_default(op_id);
         let (url, path) = build_clone_args(&server_url, &repo_id, &repo_name, &dest_parent);
         run_lore_op(&app, "clone", &op_id, &["clone", &url, &path])?;
         Ok(path)
@@ -733,7 +763,7 @@ pub async fn lore_amend(repo_path: String, message: String) -> Result<(), String
 #[tauri::command]
 pub async fn lore_push(app: tauri::AppHandle, repo_path: String, op_id: Option<String>) -> Result<(), String> {
     blocking(move || {
-        let op_id = op_id.unwrap_or_default(); // required once the frontend sends it (Task 16)
+        let op_id = op_id_or_default(op_id);
         run_lore_op(&app, "push", &op_id, &["push", "--repository", &repo_path])?;
         Ok(())
     })
@@ -835,7 +865,7 @@ fn undo_commit_blocking(repo_path: &str, parent_revision: &str) -> Result<(), St
 #[tauri::command]
 pub async fn lore_sync(app: tauri::AppHandle, repo_path: String, op_id: Option<String>) -> Result<(), String> {
     blocking(move || {
-        let op_id = op_id.unwrap_or_default(); // required once the frontend sends it (Task 16)
+        let op_id = op_id_or_default(op_id);
         run_lore_op(&app, "sync", &op_id, &["sync", "--repository", &repo_path])?;
         Ok(())
     })
@@ -2018,6 +2048,36 @@ mod op_progress_tests {
         let events = parse_events(sample).unwrap();
         let ticks: Vec<_> = events.iter().filter_map(op_progress_from).collect();
         assert_eq!(ticks, vec![(3, None)]);
+    }
+
+    #[test]
+    fn first_tick_is_always_emitted() {
+        assert!(should_emit(None, 1, Some(100)));
+    }
+
+    #[test]
+    fn final_tick_is_always_emitted_even_if_recent() {
+        // Fresh Instant::now() — elapsed() is far under the 33ms throttle window.
+        let last = Some(std::time::Instant::now());
+        assert!(should_emit(last, 100, Some(100)));
+    }
+
+    #[test]
+    fn intermediate_tick_within_window_is_suppressed() {
+        let last = Some(std::time::Instant::now());
+        assert!(!should_emit(last, 50, Some(100)));
+    }
+
+    #[test]
+    fn intermediate_tick_with_unknown_total_is_never_treated_as_final() {
+        let last = Some(std::time::Instant::now());
+        assert!(!should_emit(last, 50, None));
+    }
+
+    #[test]
+    fn intermediate_tick_after_window_elapses_is_emitted() {
+        let last = Some(std::time::Instant::now() - std::time::Duration::from_millis(40));
+        assert!(should_emit(last, 50, Some(100)));
     }
 }
 
