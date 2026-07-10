@@ -37,3 +37,15 @@ extract `value.data`. Relevant keys:
 
 **`authUserInfo`** (after the listing's `complete`): `{"id":"<uuid>","name":"<display>"}`
 → the id→name map used to resolve `created-by` / `committed-by`.
+
+**`fileInfo`** (`file info <paths…> --json`, batch — one event per file, even
+when the paths passed on the CLI are absolute): `path` (relative to the repo
+root, **not** echoed absolute), `size` (u64, size at the repo's current
+revision — this is the "old" side of the weight delta; the "new" side is the
+local `size` of `repositoryStatusFile`). Also present but not currently
+consumed: `context` (uuid), `hash` / `localHash` (content hash strings —
+`localHash` is all-zeros when the file has local modifications, i.e. not
+computed), `isFile` / `isDir`, `flagModified` / `flagDeleted` / `flagAdded` /
+`flagConflict` (booleans), `mode` (number), `localSize` (u64, local disk
+size), `filterSize` (number). No per-file error event was observed; batch
+still ends with the usual `{"tagName":"complete","data":{"status":0}}`.
