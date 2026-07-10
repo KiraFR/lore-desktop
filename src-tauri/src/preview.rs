@@ -17,7 +17,7 @@ pub struct PreviewDto {
 const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 const IMAGE_EXTS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend",
-    "uasset", "umap",
+    "uasset", "umap", "sbsar", "spp",
 ];
 
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
@@ -106,6 +106,8 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "exr" | "hdr" => decode_hdr_like(path),
         "blend" => decode_blend(path),
         "uasset" | "umap" => decode_uasset(path),
+        "sbsar" => decode_sbsar(path),
+        "spp" => decode_spp(path),
         _ => image::open(path).map(|d| d.to_rgba8()).map_err(|e| e.to_string()),
     }
 }
@@ -278,14 +280,15 @@ fn read_at(f: &mut std::fs::File, off: u64, len: usize) -> Option<Vec<u8>> {
 }
 
 /// Decode bytes only if they start with a PNG or JPEG magic and stay
-/// thumbnail-sized (UE thumbnails are ≤ 256 px; the 1024 cap rejects false
-/// magic hits inside source data). Trailing garbage after the image is fine.
-fn decode_sniffed(data: &[u8]) -> Option<image::RgbaImage> {
+/// thumbnail-sized (`max_px` bounds the larger dimension so false magic
+/// hits inside source data are rejected). Trailing garbage after the
+/// image is fine.
+fn decode_sniffed(data: &[u8], max_px: u32) -> Option<image::RgbaImage> {
     if !(data.starts_with(b"\x89PNG\r\n\x1a\n") || data.starts_with(&[0xFF, 0xD8, 0xFF])) {
         return None;
     }
     let img = image::load_from_memory(data).ok()?.to_rgba8();
-    if img.width().max(img.height()) > 1024 {
+    if img.width().max(img.height()) > max_px {
         return None;
     }
     Some(img)
@@ -297,8 +300,65 @@ fn decode_uasset(path: &Path) -> Result<image::RgbaImage, String> {
     let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let len = f.metadata().map_err(|e| e.to_string())?.len();
     uasset_summary_thumbnail(&mut f, len)
-        .or_else(|| uasset_magic_scan(&mut f, len))
+        .or_else(|| magic_scan_image(&mut f, len, UASSET_MAX_PX))
         .ok_or_else(|| "no embedded thumbnail".into())
+}
+
+/// UE thumbnails are ≤ 256 px; the 1024 cap rejects false magic hits
+/// inside source data.
+const UASSET_MAX_PX: u32 = 1024;
+
+/// .spp files can carry full-size previews — accept up to 2048 px.
+const SPP_MAX_PX: u32 = 2048;
+
+/// Largest .sbsar archive entry worth extracting as an icon.
+const SBSAR_MAX_ICON_BYTES: u64 = 10 << 20;
+
+/// Pick the .sbsar entry most likely to be the published icon: prefer a
+/// `.png` whose name (case-insensitive) mentions `icon` or `thumbnail`,
+/// else the first `.png`. Entries over 10 MiB are never considered.
+fn pick_png_entry<'a>(entries: impl IntoIterator<Item = (&'a str, u64)>) -> Option<&'a str> {
+    let mut first = None;
+    for (name, size) in entries {
+        let lower = name.to_ascii_lowercase();
+        if !lower.ends_with(".png") || size == 0 || size > SBSAR_MAX_ICON_BYTES {
+            continue;
+        }
+        if lower.contains("icon") || lower.contains("thumbnail") {
+            return Some(name);
+        }
+        first = first.or(Some(name));
+    }
+    first
+}
+
+/// The icon PNG Substance Designer publishes inside a .sbsar (a plain 7z
+/// archive, typically `assemblies/content/…/icon*.png`). No Substance
+/// engine involved — just archive extraction.
+fn decode_sbsar(path: &Path) -> Result<image::RgbaImage, String> {
+    let mut z = sevenz_rust2::SevenZReader::open(path, sevenz_rust2::Password::empty())
+        .map_err(|e| e.to_string())?;
+    let name = pick_png_entry(
+        z.archive().files.iter().filter(|f| !f.is_directory).map(|f| (f.name.as_str(), f.size)),
+    )
+    .map(str::to_owned)
+    .ok_or("no PNG icon in archive")?;
+    let data = z.read_file(&name).map_err(|e| e.to_string())?;
+    image::load_from_memory(&data).map(|d| d.to_rgba8()).map_err(|e| e.to_string())
+}
+
+/// Opportunistic Substance Painter (.spp = HDF5 container) preview: no
+/// documented thumbnail stream, so after checking the HDF5 magic we run
+/// the same bounded PNG/JPEG scan as the .uasset fallback and keep the
+/// first hit that decodes reasonably sized.
+fn decode_spp(path: &Path) -> Result<image::RgbaImage, String> {
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let len = f.metadata().map_err(|e| e.to_string())?.len();
+    let head = read_at(&mut f, 0, 8).ok_or("unreadable file")?;
+    if head != b"\x89HDF\r\n\x1a\n" {
+        return Err("not an HDF5 container".into());
+    }
+    magic_scan_image(&mut f, len, SPP_MAX_PX).ok_or_else(|| "no embedded preview".into())
 }
 
 /// Parse the FPackageFileSummary far enough to locate ThumbnailTableOffset.
@@ -392,13 +452,14 @@ fn object_thumbnail(f: &mut std::fs::File, off: u64, file_len: u64) -> Option<im
     if size <= 0 || size as u64 > 16 << 20 || off + 12 + size as u64 > file_len {
         return None;
     }
-    decode_sniffed(&read_at(f, off + 12, size as usize)?)
+    decode_sniffed(&read_at(f, off + 12, size as usize)?, UASSET_MAX_PX)
 }
 
-/// Last-resort, version-agnostic fallback: bounded chunked scan (64 MiB read
-/// budget, chunks overlapping enough that a whole thumbnail payload is always
-/// seen in one piece) for a PNG/JPEG magic that decodes thumbnail-sized.
-fn uasset_magic_scan(f: &mut std::fs::File, file_len: u64) -> Option<image::RgbaImage> {
+/// Format-agnostic bounded chunked scan (64 MiB read budget, chunks
+/// overlapping enough that a whole thumbnail payload is always seen in one
+/// piece) for a PNG/JPEG magic that decodes no larger than `max_px`.
+/// Shared by the .uasset fallback and the opportunistic .spp path.
+fn magic_scan_image(f: &mut std::fs::File, file_len: u64, max_px: u32) -> Option<image::RgbaImage> {
     const CHUNK: usize = 16 << 20;
     const OVERLAP: usize = 4 << 20;
     let mut pos = 0u64;
@@ -419,7 +480,7 @@ fn uasset_magic_scan(f: &mut std::fs::File, file_len: u64) -> Option<image::Rgba
             if b != 0x89 && b != 0xFF {
                 continue;
             }
-            if let Some(img) = decode_sniffed(&buf[i..]) {
+            if let Some(img) = decode_sniffed(&buf[i..], max_px) {
                 return Some(img);
             }
         }
@@ -766,6 +827,90 @@ mod tests {
         let p = d.join("Cooked.uasset");
         std::fs::write(&p, noise(4096)).unwrap();
         assert_eq!(image_preview(&p, "uasset", 128, None).kind, "none");
+    }
+
+    /// Build a .7z on disk with the given (name, bytes) entries.
+    fn write_7z(path: &Path, entries: &[(&str, &[u8])]) {
+        let mut z = sevenz_rust2::SevenZWriter::create(path).unwrap();
+        for (name, data) in entries {
+            z.push_archive_entry(sevenz_rust2::SevenZArchiveEntry::new_file(name), Some(*data))
+                .unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn sbsar_embedded_icon_decodes() {
+        let d = dir("sbsar");
+        let png = mini_png(6, 3);
+        let p = d.join("mat.sbsar");
+        write_7z(&p, &[("graph.xml", b"<xml/>"), ("assemblies/content/0000/icon1.png", &png)]);
+        let out = image_preview(&p, "sbsar", 128, None);
+        assert_eq!(out.kind, "image");
+        assert_eq!((out.width, out.height), (Some(6), Some(3)));
+    }
+
+    #[test]
+    fn sbsar_without_png_is_none() {
+        let d = dir("sbsarnone");
+        let p = d.join("mat.sbsar");
+        write_7z(&p, &[("graph.xml", b"<xml/>")]);
+        assert_eq!(image_preview(&p, "sbsar", 128, None).kind, "none");
+        let bad = d.join("bad.sbsar");
+        std::fs::write(&bad, noise(256)).unwrap(); // not a 7z at all
+        assert_eq!(image_preview(&bad, "sbsar", 128, None).kind, "none");
+    }
+
+    #[test]
+    fn pick_png_entry_prefers_icon_names_and_caps_size() {
+        // An icon-named entry beats an earlier plain PNG.
+        assert_eq!(
+            pick_png_entry(vec![("a.png", 10), ("sub/Icon_main.PNG", 10)]),
+            Some("sub/Icon_main.PNG")
+        );
+        // Otherwise the first PNG wins; non-PNG entries are ignored.
+        assert_eq!(
+            pick_png_entry(vec![("graph.xml", 10), ("first.png", 10), ("second.png", 10)]),
+            Some("first.png")
+        );
+        // Oversized or empty entries are never considered.
+        assert_eq!(pick_png_entry(vec![("huge_icon.png", 11 << 20), ("empty.png", 0)]), None);
+    }
+
+    #[test]
+    fn spp_scan_finds_embedded_png() {
+        let d = dir("sppscan");
+        let png = mini_png(5, 4);
+        let mut b = b"\x89HDF\r\n\x1a\n".to_vec();
+        b.extend_from_slice(&noise(2000));
+        b.extend_from_slice(&png);
+        b.extend_from_slice(&noise(2000));
+        let p = d.join("proj.spp");
+        std::fs::write(&p, b).unwrap();
+        let out = image_preview(&p, "spp", 128, None);
+        assert_eq!(out.kind, "image");
+        assert_eq!((out.width, out.height), (Some(5), Some(4)));
+    }
+
+    #[test]
+    fn spp_without_image_is_none() {
+        let d = dir("sppnone");
+        let p = d.join("empty.spp");
+        let mut b = b"\x89HDF\r\n\x1a\n".to_vec();
+        b.extend_from_slice(&noise(4096));
+        std::fs::write(&p, b).unwrap();
+        assert_eq!(image_preview(&p, "spp", 128, None).kind, "none");
+    }
+
+    #[test]
+    fn non_hdf5_spp_is_none() {
+        let d = dir("sppbad");
+        let png = mini_png(4, 4);
+        let mut b = noise(64);
+        b.extend_from_slice(&png); // even with a PNG inside, wrong magic ⇒ none
+        let p = d.join("fake.spp");
+        std::fs::write(&p, b).unwrap();
+        assert_eq!(image_preview(&p, "spp", 128, None).kind, "none");
     }
 
     #[test]

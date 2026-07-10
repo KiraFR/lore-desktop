@@ -31,3 +31,8 @@ psd = "0.3.5"
 base64 = "0.22.1"
 flate2 = "1.1.9"
 zstd = "0.13.3"
+# Read-only 7z in the app; the writer ("compress") is only pulled in for tests.
+sevenz-rust2 = { version = "0.7.0", default-features = false }
+
+[dev-dependencies]
+sevenz-rust2 = { version = "0.7.0", features = ["compress"] }

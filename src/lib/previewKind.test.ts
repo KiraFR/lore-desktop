@@ -9,6 +9,8 @@ describe('isPreviewableImage', () => {
     expect(isPreviewableImage('Content/Chars/hero.blend')).toBe(true)
     expect(isPreviewableImage('Content/Meshes/SM_Crate.uasset')).toBe(true)
     expect(isPreviewableImage('Content/Maps/Arena.UMAP')).toBe(true)
+    expect(isPreviewableImage('Materials/Rock_Wall.sbsar')).toBe(true)
+    expect(isPreviewableImage('Painter/HeroSkin.spp')).toBe(true)
   })
   it('rejects everything else', () => {
     expect(isPreviewableImage('Source/main.cpp')).toBe(false)
