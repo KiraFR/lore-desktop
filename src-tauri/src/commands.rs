@@ -1164,6 +1164,105 @@ mod file_history_tests {
     }
 }
 
+/// Sizes at the current repository revision, from `lore file info <paths…>`
+/// (batch). Keyed by the path as the event reports it, `\` normalized to `/`.
+/// Event/field names pinned against tests/fixtures/file_info.ndjson.
+fn file_sizes_from(events: &[LoreEvent]) -> std::collections::HashMap<String, u64> {
+    let mut out = std::collections::HashMap::new();
+    for d in events_with_tag(events, "fileInfo") {
+        if let (Some(path), Some(size)) = (
+            d.get("path").and_then(|v| v.as_str()),
+            d.get("size").and_then(|v| v.as_u64()),
+        ) {
+            out.insert(path.replace('\\', "/"), size);
+        }
+    }
+    out
+}
+
+/// Match each requested repo-relative path against the reported sizes: exact
+/// key first, else a suffix match (defensive: some CLI builds may echo back
+/// the absolute paths they were given). Unmatched paths are simply absent —
+/// never a fake 0.
+fn relative_sizes(
+    reported: &std::collections::HashMap<String, u64>,
+    paths: &[String],
+) -> std::collections::HashMap<String, u64> {
+    let mut out = std::collections::HashMap::new();
+    for rel in paths {
+        let norm = rel.replace('\\', "/");
+        let found = reported.get(&norm).copied().or_else(|| {
+            let suffix = format!("/{norm}");
+            reported.iter().find(|(k, _)| k.ends_with(&suffix)).map(|(_, v)| *v)
+        });
+        if let Some(size) = found {
+            out.insert(rel.clone(), size);
+        }
+    }
+    out
+}
+
+/// Repository-revision ("old") sizes of the given files, in ONE batch
+/// `lore file info` call. Paths are passed absolute (`lore file` resolves
+/// relative paths against the process cwd — same gotcha as lock/diff/reset).
+/// Pure enrichment: the frontend calls it fire-and-forget after status.
+#[tauri::command]
+pub async fn lore_file_sizes(
+    repo_path: String,
+    paths: Vec<String>,
+) -> Result<std::collections::HashMap<String, u64>, String> {
+    if paths.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    blocking(move || {
+        let abs: Vec<String> = paths
+            .iter()
+            .map(|p| std::path::Path::new(&repo_path).join(p).to_string_lossy().into_owned())
+            .collect();
+        let mut args: Vec<&str> = vec!["file", "info"];
+        args.extend(abs.iter().map(|s| s.as_str()));
+        args.extend(["--repository", &repo_path]);
+        let events = run_lore(&args)?;
+        Ok(relative_sizes(&file_sizes_from(&events), &paths))
+    })
+    .await
+}
+
+#[cfg(test)]
+mod file_sizes_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    #[test]
+    fn parses_file_info_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/file_info.ndjson")).unwrap();
+        let sizes = file_sizes_from(&events);
+        assert!(!sizes.is_empty(), "the captured fixture must yield at least one size");
+        assert_eq!(sizes.get("README.md"), Some(&42));
+        assert_eq!(sizes.get("notify-test.txt"), Some(&24));
+    }
+
+    const SAMPLE: &str = concat!(
+        r#"{"tagName":"fileInfo","data":{"path":"C:/Users/jimmy/lore-test-repo/notes.txt","size":420}}"#, "\n",
+        r#"{"tagName":"fileInfo","data":{"path":"C:/Users/jimmy/lore-test-repo/Content/T_Cliff.uasset","size":4093640}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    #[test]
+    fn maps_reported_paths_back_to_relative() {
+        let events = parse_events(SAMPLE).unwrap();
+        let reported = file_sizes_from(&events);
+        let out = relative_sizes(
+            &reported,
+            &["notes.txt".to_string(), "Content/T_Cliff.uasset".to_string(), "gone.txt".to_string()],
+        );
+        assert_eq!(out.get("notes.txt"), Some(&420));
+        assert_eq!(out.get("Content/T_Cliff.uasset"), Some(&4093640));
+        // Unreported file → absent from the map, never a fake 0.
+        assert!(!out.contains_key("gone.txt"));
+    }
+}
+
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MergePreviewDto {
