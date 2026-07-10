@@ -1,5 +1,5 @@
 import { isPreviewableImage } from './previewKind'
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
 export function mockWavDataUrl(): string {
@@ -218,8 +218,13 @@ export const mock: LoreApi = {
     }
     return { kind: 'none', url: null } as PreviewData
   },
-  async cloneRepo(_serverUrl: string, _repoId: string, repoName: string, destParent: string) {
-    await delay(600) // simulate the network + disk work
+  async cloneRepo(_serverUrl: string, _repoId: string, repoName: string, destParent: string, onProgress?: (p: OpProgress) => void) {
+    // Simulated determinate transfer so the clone progress bar lives in dev.
+    const total = 48 * 1024 * 1024
+    for (let i = 1; i <= 12; i++) {
+      await delay(90)
+      onProgress?.({ done: Math.round((total * i) / 12), total, unit: 'bytes' })
+    }
     return `${destParent}/${repoName}`
   },
   async getStatus(repoPath: string) {
@@ -260,12 +265,18 @@ export const mock: LoreApi = {
     s.files = s.files.filter((f) => exclude.includes(f.path))
     s.localAhead += 1
   },
-  async push(repoPath: string) {
-    await delay(600)
+  async push(repoPath: string, onProgress?: (p: OpProgress) => void) {
+    for (let i = 1; i <= 6; i++) {
+      await delay(100)
+      onProgress?.({ done: i, total: 6, unit: 'files' })
+    }
     stateFor(repoPath).localAhead = 0
   },
-  async sync(repoPath: string) {
-    await delay(500)
+  async sync(repoPath: string, onProgress?: (p: OpProgress) => void) {
+    for (let i = 1; i <= 6; i++) {
+      await delay(80)
+      onProgress?.({ done: i, total: 6, unit: 'files' })
+    }
     stateFor(repoPath).remoteAhead = 0
   },
   async pushedLockFiles(_repoPath: string) {

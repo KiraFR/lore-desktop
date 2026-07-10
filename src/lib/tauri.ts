@@ -2,7 +2,34 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, StatusResult } from './types'
+
+type WireProgress = { opId: string; kind: string; done: number; total?: number; unit?: 'bytes' | 'files' }
+
+/**
+ * Invoke a long command with a frontend-generated opId, listening to
+ * `lore://op-progress` filtered on that id for the call's duration. The id is
+ * what distinguishes simultaneous operations (e.g. a sync during a clone).
+ */
+async function invokeWithProgress<T>(
+  cmd: string,
+  args: Record<string, unknown>,
+  onProgress?: (p: OpProgress) => void,
+): Promise<T> {
+  const opId = crypto.randomUUID()
+  let unlisten: (() => void) | null = null
+  if (onProgress) {
+    unlisten = await listen<WireProgress>('lore://op-progress', (e) => {
+      if (e.payload.opId === opId)
+        onProgress({ done: e.payload.done, total: e.payload.total, unit: e.payload.unit })
+    })
+  }
+  try {
+    return await invoke<T>(cmd, { ...args, opId })
+  } finally {
+    unlisten?.()
+  }
+}
 
 export const tauriApi: LoreApi = {
   ...mock,
@@ -45,13 +72,13 @@ export const tauriApi: LoreApi = {
       return { kind: 'image', url: r.dataUrl, width: r.width ?? undefined, height: r.height ?? undefined }
     return { kind: 'none', url: null }
   },
-  cloneRepo: (serverUrl, repoId, repoName, destParent) =>
-    invoke<string>('lore_clone', { serverUrl, repoId, repoName, destParent }),
+  cloneRepo: (serverUrl, repoId, repoName, destParent, onProgress) =>
+    invokeWithProgress<string>('lore_clone', { serverUrl, repoId, repoName, destParent }, onProgress),
   loadConfig: () => invoke<AppConfig>('config_load'),
   saveConfig: (config) => invoke<void>('config_save', { config }),
   commitAll: (repoPath, message, exclude) => invoke<void>('lore_commit', { repoPath, message, exclude }),
-  push: (repoPath) => invoke<void>('lore_push', { repoPath }),
-  sync: (repoPath) => invoke<void>('lore_sync', { repoPath }),
+  push: (repoPath, onProgress) => invokeWithProgress<void>('lore_push', { repoPath }, onProgress),
+  sync: (repoPath, onProgress) => invokeWithProgress<void>('lore_sync', { repoPath }, onProgress),
   pushedLockFiles: (repoPath) => invoke<string[]>('lore_pushed_lock_files', { repoPath }),
   setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
   discardFile: (repoPath, path) => invoke<void>('lore_discard_file', { repoPath, path }),

@@ -25,6 +25,13 @@ export interface StatusResult {
   files: ChangedFile[]
 }
 
+/** One progress tick of a long operation (clone/sync/push). No `total` = indeterminate. */
+export interface OpProgress {
+  done: number
+  total?: number
+  unit?: 'bytes' | 'files'
+}
+
 export type { LoreNotification } from './notifyRouting'
 import type { LoreNotification } from './notifyRouting'
 
@@ -143,16 +150,16 @@ export interface LoreApi {
   startNotifications(repoPath: string, onEvent: (e: LoreNotification) => void): Promise<() => void>
   /** Revision timeline of one file (newest first). */
   getFileHistory(repoPath: string, path: string): Promise<FileRevision[]>
-  /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
-  cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
+  /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. Progress ticks stream via onProgress. */
+  cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string, onProgress?: (p: OpProgress) => void): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
   /** Repository-revision sizes of the given files (ONE batch `file info` call) — the "old" side of the size delta. */
   fileSizes(repoPath: string, paths: string[]): Promise<Record<string, number>>
   getDiff(repoPath: string, path: string): Promise<DiffLine[]>
   /** Commit the working changes except `exclude` (unchecked files stay pending). */
   commitAll(repoPath: string, message: string, exclude: string[]): Promise<void>
-  push(repoPath: string): Promise<void>
-  sync(repoPath: string): Promise<void>
+  push(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>
+  sync(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>
   /** Files the current user holds locked that are part of the pending push. */
   pushedLockFiles(repoPath: string): Promise<string[]>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>

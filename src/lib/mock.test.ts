@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mock } from './mock'
+import type { OpProgress } from './types'
 
 describe('mock api', () => {
   beforeEach(async () => {
@@ -155,6 +156,31 @@ describe('mock.fileSizes', () => {
     ])
     expect(sizes['Content/Maps/Level_01.umap']).toBe(2100480)
     expect(sizes['Content/Characters/Hero/SK_Hero.uasset']).toBeUndefined()
+  })
+})
+
+describe('mock op progress', () => {
+  it('clone reports increasing ticks and finishes at total', async () => {
+    const ticks: OpProgress[] = []
+    await mock.cloneRepo('lore://x', 'id1', 'game', 'C:/repos', (p) => ticks.push(p))
+    expect(ticks.length).toBeGreaterThan(3)
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i].done).toBeGreaterThanOrEqual(ticks[i - 1].done)
+    const last = ticks[ticks.length - 1]
+    expect(last.total).toBeGreaterThan(0)
+    expect(last.done).toBe(last.total)
+  })
+  it('sync and push tick too, and still mutate the repo state', async () => {
+    const syncTicks: OpProgress[] = []
+    await mock.sync('C:/repos/prog', (p) => syncTicks.push(p))
+    expect(syncTicks.length).toBeGreaterThan(2)
+    expect((await mock.getStatus('C:/repos/prog')).remoteAhead).toBe(0)
+    const pushTicks: OpProgress[] = []
+    await mock.push('C:/repos/prog', (p) => pushTicks.push(p))
+    expect(pushTicks.length).toBeGreaterThan(2)
+    expect((await mock.getStatus('C:/repos/prog')).localAhead).toBe(0)
+  })
+  it('progress callbacks stay optional', async () => {
+    await expect(mock.sync('C:/repos/noprog')).resolves.toBeUndefined()
   })
 })
 
