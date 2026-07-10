@@ -133,6 +133,13 @@
         </button>
       </header>
 
+      {#if file.lockedBy && file.lockedBy !== 'you'}
+        <div class="lockwarn" role="status">
+          <Icon name="lock" size={14} />
+          <span>Locked by {file.lockedBy} — excluded from commit while locked</span>
+        </div>
+      {/if}
+
       {#if file.isBinary}
         {#if preview?.kind === 'audio' && preview.url}
           <AudioPlayer src={preview.url} name={baseName(file.path)} />
@@ -238,6 +245,7 @@
   .empty .small { font-size: 12px; margin-top: 4px; }
   .body { padding: 16px 18px; max-width: 720px; }
   .head { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
+  .lockwarn { display: flex; align-items: center; gap: 8px; background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 9px 12px; font-size: 12px; margin: 0 0 14px; }
   .ic { width: 34px; height: 34px; border-radius: 8px; background: var(--panel); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; }
   .ttl { min-width: 0; }
   .fn { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
