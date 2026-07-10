@@ -49,3 +49,9 @@ computed), `isFile` / `isDir`, `flagModified` / `flagDeleted` / `flagAdded` /
 `flagConflict` (booleans), `mode` (number), `localSize` (u64, local disk
 size), `filterSize` (number). No per-file error event was observed; batch
 still ends with the usual `{"tagName":"complete","data":{"status":0}}`.
+
+**Merge/staged dans `repositoryStatusRevision`** : `revisionMerged` (hash — non-zéro
+= merge en cours) et `revisionStaged` (hash — non-zéro = état stagé résiduel).
+Un hash all-zeros (64 × '0') ou un champ absent (CLI plus ancien) = false.
+Captures : status_merge.ndjson (pendant `branch merge start` conflictuel),
+status_staged.ndjson (après `stage .` sans commit).
