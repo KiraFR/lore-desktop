@@ -34,6 +34,7 @@
   }
 
   async function cloneRepo(entry: RepoEntry) {
+    if (busy) return
     busy = `clone:${entry.id}`
     try {
       await cloneServerRepo(entry)
@@ -65,11 +66,15 @@
         <span class="ico"><Icon name="folder" size={16} /></span>
         <div class="meta"><strong>{r.name}</strong><p class="muted small mono">{r.id.slice(0, 12)}…</p></div>
         <span class="spacer"></span>
-        <button onclick={() => cloneRepo(r)} disabled={busy === `clone:${r.id}`}>
+        <button onclick={() => cloneRepo(r)} disabled={!!busy}>
           {busy === `clone:${r.id}` ? cloneLabel(pct(opProgress.clone)) : 'Clone…'}
         </button>
         {#if busy === `clone:${r.id}`}
-          <span class="clonebar" class:indet={pct(opProgress.clone) === null} style="width: {pct(opProgress.clone) ?? 40}%"></span>
+          {@const p = pct(opProgress.clone)}
+          <span class="clonebar" class:indet={p === null} style="width: {p ?? 40}%"
+                role={p === null ? undefined : 'progressbar'} aria-valuemin={p === null ? undefined : 0}
+                aria-valuemax={p === null ? undefined : 100} aria-valuenow={p === null ? undefined : p}
+                aria-hidden={p === null ? 'true' : undefined}></span>
         {/if}
       </li>
     {/each}

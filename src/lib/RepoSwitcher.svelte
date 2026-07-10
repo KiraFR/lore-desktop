@@ -119,7 +119,11 @@
             </span>
           </button>
           {#if busy === `clone:${r.id}`}
-            <span class="clonebar" class:indet={pct(opProgress.clone) === null} style="width: {pct(opProgress.clone) ?? 40}%"></span>
+            {@const p = pct(opProgress.clone)}
+            <span class="clonebar" class:indet={p === null} style="width: {p ?? 40}%"
+                  role={p === null ? undefined : 'progressbar'} aria-valuemin={p === null ? undefined : 0}
+                  aria-valuemax={p === null ? undefined : 100} aria-valuenow={p === null ? undefined : p}
+                  aria-hidden={p === null ? 'true' : undefined}></span>
           {/if}
         </div>
       {/each}

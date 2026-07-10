@@ -70,12 +70,17 @@
   <span class="spacer"></span>
 
   {#if session.config.currentRepo}
+    <!-- Sync/Push keep a plain label: the % lives in the bar (and aria-valuenow below) — a number on these narrow buttons would flicker between indeterminate and determinate states. -->
     <button class="action" onclick={sync} disabled={!!repo.busy || noRemote} title={noRemote ? 'Server unreachable — sync is unavailable' : 'Sync'}>
       <Icon name="sync" size={16} />
       <span>{repo.busy === 'sync' ? 'Syncing…' : 'Sync'}</span>
       {#if repo.status?.remoteAhead}<span class="count">{repo.status.remoteAhead}</span>{/if}
       {#if repo.busy === 'sync'}
-        <span class="opbar" class:indet={pct(opProgress.sync) === null} style="width: {pct(opProgress.sync) ?? 40}%"></span>
+        {@const p = pct(opProgress.sync)}
+        <span class="opbar" class:indet={p === null} style="width: {p ?? 40}%"
+              role={p === null ? undefined : 'progressbar'} aria-valuemin={p === null ? undefined : 0}
+              aria-valuemax={p === null ? undefined : 100} aria-valuenow={p === null ? undefined : p}
+              aria-hidden={p === null ? 'true' : undefined}></span>
       {/if}
     </button>
     <button class="action accent" onclick={push} disabled={!!repo.busy || noRemote || (repo.status?.localAhead ?? 0) === 0} title={noRemote ? 'Server unreachable — push is unavailable' : 'Push'}>
@@ -83,7 +88,11 @@
       <span>{repo.busy === 'push' ? 'Pushing…' : 'Push'}</span>
       {#if repo.status?.localAhead}<span class="count on">{repo.status.localAhead}</span>{/if}
       {#if repo.busy === 'push'}
-        <span class="opbar" class:indet={pct(opProgress.push) === null} style="width: {pct(opProgress.push) ?? 40}%"></span>
+        {@const p = pct(opProgress.push)}
+        <span class="opbar" class:indet={p === null} style="width: {p ?? 40}%"
+              role={p === null ? undefined : 'progressbar'} aria-valuemin={p === null ? undefined : 0}
+              aria-valuemax={p === null ? undefined : 100} aria-valuenow={p === null ? undefined : p}
+              aria-hidden={p === null ? 'true' : undefined}></span>
       {/if}
     </button>
   {/if}
