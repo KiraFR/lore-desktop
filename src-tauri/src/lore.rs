@@ -85,6 +85,100 @@ pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
     Ok(events)
 }
 
+/// Stall detector for the streaming runner: if the child emits NO line for this
+/// long, it is considered hung, killed, and the operation errors. An operation
+/// that keeps making progress is never killed — this replaces the flat 45 s cap
+/// for clone/sync/push, which legitimately run for minutes on studio binaries.
+pub const LORE_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Run `lore <args> --json` streaming stdout line by line. Each NDJSON event is
+/// (a) forwarded to `on_event` as it arrives and (b) collected for the final
+/// result, validated by the same complete-event + `check_ok` rules as
+/// `run_lore`. Modeled on the notifications sidecar (notifications.rs).
+#[allow(dead_code)] // wired in by the op-progress relay (Task 15)
+pub fn run_lore_streaming(
+    args: &[&str],
+    on_event: &mut dyn FnMut(&LoreEvent),
+) -> Result<Vec<LoreEvent>, String> {
+    let mut owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+    owned.push("--json".to_string());
+    let owned_refs: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
+    run_streaming_cmd("lore", &owned_refs, LORE_STALL_TIMEOUT, on_event)
+}
+
+/// Program-agnostic core of the streaming runner (testable with a fake child).
+fn run_streaming_cmd(
+    program: &str,
+    args: &[&str],
+    stall: Duration,
+    on_event: &mut dyn FnMut(&LoreEvent),
+) -> Result<Vec<LoreEvent>, String> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("failed to launch {program}: {e}"))?;
+    let stdout = child.stdout.take().ok_or_else(|| "no stdout pipe".to_string())?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break; // receiver gone (stall kill) — stop reading
+            }
+        }
+    });
+    let result = collect_streaming(&rx, stall, on_event);
+    if result.is_err() {
+        let _ = child.kill(); // stall or bad stream — don't leave a zombie
+    }
+    let _ = child.wait();
+    result
+}
+
+/// Drain the line channel with a stall timeout, parsing + relaying each event.
+/// Channel disconnect = clean EOF; a silent-but-alive sender = a stalled child.
+fn collect_streaming(
+    rx: &std::sync::mpsc::Receiver<String>,
+    stall: Duration,
+    on_event: &mut dyn FnMut(&LoreEvent),
+) -> Result<Vec<LoreEvent>, String> {
+    let mut events: Vec<LoreEvent> = Vec::new();
+    loop {
+        match rx.recv_timeout(stall) {
+            Ok(line) => {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(ev) = serde_json::from_str::<LoreEvent>(line) {
+                    on_event(&ev);
+                    events.push(ev);
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                return Err(format!(
+                    "lore made no progress for {} s — operation aborted",
+                    stall.as_secs().max(1)
+                ));
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    if !events.iter().any(|e| e.tag_name == "complete") {
+        return Err("lore did not emit a completion event".to_string());
+    }
+    check_ok(&events)?;
+    Ok(events)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +202,61 @@ mod tests {
         );
         let events = parse_events(sample).unwrap();
         assert!(check_ok(&events).is_err());
+    }
+
+    #[test]
+    fn streaming_relays_events_incrementally_in_order() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send(r#"{"tagName":"repositoryCloneProgress","data":{"done":10,"total":100}}"#.into()).unwrap();
+        tx.send(r#"{"tagName":"repositoryCloneProgress","data":{"done":100,"total":100}}"#.into()).unwrap();
+        tx.send(r#"{"tagName":"complete","data":{"status":0}}"#.into()).unwrap();
+        drop(tx);
+        let mut seen: Vec<String> = Vec::new();
+        let events = collect_streaming(&rx, Duration::from_millis(500), &mut |ev| seen.push(ev.tag_name.clone())).unwrap();
+        assert_eq!(seen, ["repositoryCloneProgress", "repositoryCloneProgress", "complete"]);
+        assert_eq!(events.len(), 3);
+    }
+
+    #[test]
+    fn streaming_requires_a_complete_event() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send(r#"{"tagName":"repositoryCloneProgress","data":{"done":10,"total":100}}"#.into()).unwrap();
+        drop(tx); // stream ends without complete
+        let err = collect_streaming(&rx, Duration::from_millis(500), &mut |_| {}).unwrap_err();
+        assert!(err.contains("completion"), "err was {err}");
+    }
+
+    #[test]
+    fn streaming_silence_is_a_stall_error() {
+        let (_tx, rx) = std::sync::mpsc::channel::<String>();
+        // Sender alive but silent (fake hung child) → stall, not disconnect.
+        let err = collect_streaming(&rx, Duration::from_millis(50), &mut |_| {}).unwrap_err();
+        assert!(err.contains("no progress"), "err was {err}");
+    }
+
+    #[test]
+    fn streaming_error_event_fails_check() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send(r#"{"tagName":"error","data":{"errorInner":"nope"}}"#.into()).unwrap();
+        tx.send(r#"{"tagName":"complete","data":{"status":1}}"#.into()).unwrap();
+        drop(tx);
+        assert!(collect_streaming(&rx, Duration::from_millis(500), &mut |_| {}).is_err());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn stalled_child_is_killed_promptly() {
+        // A real child that prints nothing: the stall detector must kill it and
+        // return well before its natural 30 s lifetime.
+        let start = std::time::Instant::now();
+        let err = run_streaming_cmd(
+            "powershell",
+            &["-NoProfile", "-Command", "Start-Sleep -Seconds 30"],
+            Duration::from_millis(300),
+            &mut |_| {},
+        )
+        .unwrap_err();
+        assert!(err.contains("no progress"), "err was {err}");
+        assert!(start.elapsed() < Duration::from_secs(10), "child was not killed promptly");
     }
 }
