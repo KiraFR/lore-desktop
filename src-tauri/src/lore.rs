@@ -101,7 +101,6 @@ pub const LORE_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// (a) forwarded to `on_event` as it arrives and (b) collected for the final
 /// result, validated by the same complete-event + `check_ok` rules as
 /// `run_lore`. Modeled on the notifications sidecar (notifications.rs).
-#[allow(dead_code)] // wired in by the op-progress relay (Task 15)
 pub fn run_lore_streaming(
     args: &[&str],
     on_event: &mut dyn FnMut(&LoreEvent),
@@ -147,8 +146,13 @@ fn run_streaming_cmd(
     }
     let status = child.wait().ok();
     result.map_err(|e| match status {
-        // Not for the stall path (there the exit code is just our own kill).
-        Some(s) if !s.success() && !e.contains("no progress") => format!("{e} (lore exited with {s})"),
+        // Not for the stall path (there the exit code is just our own kill),
+        // and not when the error already names an exit status itself (e.g.
+        // `check_ok`'s "lore exited with status N") — otherwise the two stack
+        // into a doubled "exited with" mention.
+        Some(s) if !s.success() && !e.contains("no progress") && !e.contains("exited with") => {
+            format!("{e} (lore exited with {s})")
+        }
         _ => e,
     })
 }
@@ -293,6 +297,43 @@ mod tests {
         tx.send(r#"{"tagName":"complete","data":{"status":1}}"#.into()).unwrap();
         drop(tx);
         assert!(collect_streaming(&rx, Duration::from_millis(500), &mut |_| {}).is_err());
+    }
+
+    /// Non-regression: a non-zero `complete` status, with the sender kept
+    /// alive (short stall), must still be an error — the Timeout-with-complete
+    /// break falls through to `check_ok`, it does not short-circuit to `Ok`.
+    #[test]
+    fn complete_status_one_then_silence_is_an_error() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send(r#"{"tagName":"complete","data":{"status":1}}"#.into()).unwrap();
+        // `tx` deliberately kept alive — same held-open-pipe shape as
+        // `timeout_after_complete_is_success_not_stall`, but here the
+        // terminal status is non-zero.
+        let err = collect_streaming(&rx, Duration::from_millis(50), &mut |_| {}).unwrap_err();
+        assert!(err.contains("status 1"), "err was {err}");
+        drop(tx);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn exit_status_suffix_is_not_doubled_when_check_ok_already_mentions_it() {
+        // The child prints a `complete` event with a non-zero status (so
+        // `check_ok`'s error already says "exited with status 1") AND the
+        // process itself exits non-zero — the two must not stack into a
+        // doubled "exited with" mention.
+        let err = run_streaming_cmd(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-Command",
+                r#"Write-Output '{"tagName":"complete","data":{"status":1}}'; exit 1"#,
+            ],
+            Duration::from_millis(500),
+            &mut |_| {},
+        )
+        .unwrap_err();
+        assert!(err.contains("exited with status 1"), "err was {err}");
+        assert_eq!(err.matches("exited with").count(), 1, "err was {err}");
     }
 
     #[test]
