@@ -58,6 +58,10 @@ pub struct StatusResultDto {
     pub revision_number: u64,
     pub remote_available: bool,
     pub remote_authorized: bool,
+    /// A merge is waiting for conflict resolution (revisionMerged* non-zero).
+    pub merge_in_progress: bool,
+    /// An interrupted commit/merge left a staged state (revisionStaged non-zero).
+    pub staged_pending: bool,
     pub files: Vec<ChangedFileDto>,
 }
 
@@ -171,6 +175,21 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
     let remote_available = rev.and_then(|d| d.get("remoteAvailable")).map(json_truthy).unwrap_or(true);
     let remote_authorized = rev.and_then(|d| d.get("remoteAuthorized")).map(json_truthy).unwrap_or(true);
 
+    // Merge/staged residual state (StatusBar chip). Field names pinned against
+    // tests/fixtures/status_merge.ndjson + status_staged.ndjson; absent fields
+    // (older CLI, no merge) default to false. NB: a merge also sets
+    // revisionStaged — the frontend chip checks mergeInProgress first.
+    let merge_in_progress = rev
+        .and_then(|d| d.get("revisionMerged"))
+        .and_then(|v| v.as_str())
+        .map(|h| !zero_hash(h))
+        .unwrap_or(false);
+    let staged_pending = rev
+        .and_then(|d| d.get("revisionStaged"))
+        .and_then(|v| v.as_str())
+        .map(|h| !zero_hash(h))
+        .unwrap_or(false);
+
     let files = events_with_tag(events, "repositoryStatusFile")
         .into_iter()
         // Directory entries ("type": "directory") are containers, not changes
@@ -187,7 +206,7 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
         })
         .collect();
 
-    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, remote_available, remote_authorized, files }
+    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, remote_available, remote_authorized, merge_in_progress, staged_pending, files }
 }
 
 /// `flag*`/`is*` fields serialize as JSON booleans (via `u8_as_bool`); accept a
@@ -1779,6 +1798,53 @@ mod status_tests {
         let s = status_from(&events, std::path::Path::new(""));
         assert!(s.remote_available);
         assert!(s.remote_authorized);
+    }
+
+    #[test]
+    fn merge_fixture_sets_merge_in_progress() {
+        let events = parse_events(include_str!("../tests/fixtures/status_merge.ndjson")).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        assert!(s.merge_in_progress);
+        assert!(s.staged_pending); // a merge implies a staged state (see fixtures README)
+    }
+
+    #[test]
+    fn staged_fixture_sets_staged_pending() {
+        let events = parse_events(include_str!("../tests/fixtures/status_staged.ndjson")).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        assert!(s.staged_pending);
+        assert!(!s.merge_in_progress);
+    }
+
+    #[test]
+    fn merge_and_staged_flags() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":3,"revisionRemoteNumber":3,"isLocalAhead":false,"isRemoteAhead":false,"revisionMerged":"a3e42aeae4e3","revisionStaged":"b4f53bfbf5f4"}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(sample).unwrap(), std::path::Path::new(""));
+        assert!(s.merge_in_progress);
+        assert!(s.staged_pending);
+    }
+
+    #[test]
+    fn zero_or_absent_merge_fields_are_false() {
+        // All-zero hashes = no merge/staged state.
+        let zeros = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":false,"isRemoteAhead":false,"revisionMerged":"0000000000000000000000000000000000000000000000000000000000000000","revisionStaged":"0000000000000000000000000000000000000000000000000000000000000000"}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(zeros).unwrap(), std::path::Path::new(""));
+        assert!(!s.merge_in_progress);
+        assert!(!s.staged_pending);
+        // Absent fields (older CLI, no merge) must default to false too.
+        let absent = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":false,"isRemoteAhead":false}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(absent).unwrap(), std::path::Path::new(""));
+        assert!(!s.merge_in_progress);
+        assert!(!s.staged_pending);
     }
 }
 
