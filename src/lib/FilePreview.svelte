@@ -7,6 +7,7 @@
   import Icon from './Icon.svelte'
   import AudioPlayer from './AudioPlayer.svelte'
   import ModelViewer from './ModelViewer.svelte'
+  import { fmtSize } from './sizeFormat'
 
   let { file }: { file: ChangedFile | null } = $props()
 
@@ -82,12 +83,6 @@
   const authorLabel = (a: string) =>
     a === session.identity?.email ? 'you' : a.includes('@') ? a.split('@')[0] : a.slice(0, 8)
 
-  const KB = 1024, MB = 1024 * 1024
-  function fmtSize(n: number): string {
-    if (n >= MB) return (n / MB).toFixed(1) + ' MB'
-    if (n >= KB) return (n / KB).toFixed(1) + ' KB'
-    return n + ' B'
-  }
   const ext = (p: string) => { const i = p.lastIndexOf('.'); return i < 0 ? '' : p.slice(i + 1).toLowerCase() }
   const TYPES: Record<string, string> = {
     uasset: 'Unreal asset', umap: 'Level (map)', pak: 'Unreal package',
@@ -111,9 +106,10 @@
   )
 
   const sizeText = $derived(
-    file
-      ? (file.oldSize != null && file.action === 'modify' ? `${fmtSize(file.oldSize)} → ${fmtSize(file.size)}` : fmtSize(file.size))
-      : '',
+    !file ? ''
+    : file.action === 'delete' && file.oldSize != null ? fmtSize(file.oldSize)
+    : file.action === 'modify' && file.oldSize != null ? `${fmtSize(file.oldSize)} → ${fmtSize(file.size)}`
+    : fmtSize(file.size),
   )
 </script>
 
