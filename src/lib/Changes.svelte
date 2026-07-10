@@ -5,6 +5,7 @@
   import { repo, commit, setLock, discardFile } from './repo.svelte'
   import { composeCommitMessage } from './commitMessage'
   import { formatDelta } from './sizeFormat'
+  import { partitionByLock, filterByQuery } from './changesPartition'
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
@@ -26,18 +27,21 @@
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
 
   const files = $derived(repo.status?.files ?? [])
-  const query = $derived(filter.trim().toLowerCase())
-  const shown = $derived(query ? files.filter((f) => f.path.toLowerCase().includes(query)) : files)
+  const parts = $derived(partitionByLock(files))
+  const shownCommittable = $derived(filterByQuery(parts.committable, filter))
+  const shownLocked = $derived(filterByQuery(parts.lockedByOthers, filter))
+  const shownCount = $derived(shownCommittable.length + shownLocked.length)
   const branch = $derived(repo.status?.branch ?? 'main')
-  const stagedCount = $derived(files.filter((f) => staged.has(f.path)).length)
+  const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
 
-  // Default: everything staged. Re-sync only when the SET of paths actually
-  // changes — locks/sizes enrichment replaces `files` (new array, same paths)
-  // every ~400ms, which must not re-check boxes the user just unchecked.
-  const pathKey = $derived(files.map((f) => f.path).join('\n'))
+  const committablePathKey = $derived(parts.committable.map((f) => f.path).join('\n'))
+  // Default: every committable file staged. Teammate-locked files are NEVER
+  // staged — exclusion by construction (doCommit excludes everything unstaged),
+  // so there is no way to commit them from the app. Rebuilt only when the
+  // committable path set actually changes (enrichment merges keep selection).
   $effect(() => {
-    pathKey
-    staged = new Set(untrack(() => files).map((f) => f.path))
+    committablePathKey
+    staged = new Set(untrack(() => parts.committable).map((f) => f.path))
   })
 
   // Queue row thumbnails for previewable images (deleted files have no working copy).
@@ -52,6 +56,8 @@
   }
 
   async function doCommit() {
+    // Everything not staged is excluded — that covers unchecked committables
+    // AND every teammate-locked file (never in `staged`, by construction).
     const exclude = files.filter((f) => !staged.has(f.path)).map((f) => f.path)
     await commit(composeCommitMessage(message, description), exclude)
     message = ''
@@ -94,7 +100,7 @@
 </script>
 
 <section class="changes">
-  <div class="colhead">Changes <span class="n">{query ? `${shown.length} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span></div>
+  <div class="colhead">Changes <span class="n">{filter.trim() ? `${shownCount} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span></div>
 
   <input class="filter" bind:value={filter} placeholder="Filter files" />
 
@@ -103,11 +109,11 @@
       <p class="muted pad">Scanning…</p>
     {:else if files.length === 0}
       <div class="empty muted"><p>No local changes.</p></div>
-    {:else if shown.length === 0}
+    {:else if shownCount === 0}
       <p class="muted pad">No files match.</p>
     {:else}
       <ul>
-        {#each shown as f (f.path)}
+        {#each shownCommittable as f (f.path)}
           {@const d = formatDelta(f)}
           <li class="file" class:sel={f.path === selectedPath}
               oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
@@ -121,8 +127,6 @@
               {#if d}<span class="delta">{d}</span>{/if}
               {#if f.lockedBy === 'you'}
                 <span class="lock"><Icon name="lock" size={11} /> you</span>
-              {:else if f.lockedBy}
-                <span class="lock other"><Icon name="lock" size={11} /> {f.lockedBy}</span>
               {:else if f.isBinary}
                 <span class="bin">bin</span>
               {/if}
@@ -130,6 +134,29 @@
           </li>
         {/each}
       </ul>
+      {#if shownLocked.length > 0}
+        <div class="lockedhead">
+          <Icon name="lock" size={12} />
+          <span>Locked by teammates ({shownLocked.length}) — excluded from commit</span>
+        </div>
+        <ul>
+          {#each shownLocked as f (f.path)}
+            {@const d = formatDelta(f)}
+            <li class="file locked" class:sel={f.path === selectedPath}
+                oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
+              <div class="rowmain" role="button" tabindex="0"
+                   onclick={() => onselect(f.path)}
+                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect(f.path) } }}>
+                <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
+                {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
+                <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
+                {#if d}<span class="delta">{d}</span>{/if}
+                <span class="lock other"><Icon name="lock" size={11} /> {f.lockedBy}</span>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
   </div>
 
@@ -169,6 +196,8 @@
   .lock { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); border-radius: 999px; padding: 1px 7px; }
   .lock.other { background: var(--panel); color: var(--text-muted); }
   .bin { flex-shrink: 0; font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
+  .lockedhead { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; font-size: 11px; color: var(--warn-text); border-top: 1px solid var(--border); margin-top: 4px; }
+  .file.locked .rowmain { opacity: .62; padding-left: 22px; }
   .empty { flex: 1; display: grid; place-items: center; }
   .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--bg-elev); }
   .composer textarea { resize: none; }

@@ -1,11 +1,12 @@
 <script lang="ts">
   import { repo, locks } from './repo.svelte'
   import { ui, setView } from './ui.svelte'
+  import { partitionByLock } from './changesPartition'
   import Icon from './Icon.svelte'
 
   let collapsed = $state(false)
 
-  const changed = $derived(repo.status?.files.length ?? 0)
+  const changed = $derived(partitionByLock(repo.status?.files ?? []).committable.length)
   const lockCount = $derived(locks.list.length)
 
   const items = [
