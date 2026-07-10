@@ -89,6 +89,12 @@ pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
 /// long, it is considered hung, killed, and the operation errors. An operation
 /// that keeps making progress is never killed — this replaces the flat 45 s cap
 /// for clone/sync/push, which legitimately run for minutes on studio binaries.
+///
+/// Assumes lore emits chunk-granular progress during transfers. UNVERIFIED
+/// against a real clone (capture blocked — server unreachable): if progress
+/// turns out to be per-file, a single multi-GB asset transfer could
+/// stall-kill legitimately — revisit this constant (or make it per-operation)
+/// with the Task 13 capture.
 pub const LORE_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Run `lore <args> --json` streaming stdout line by line. Each NDJSON event is
@@ -139,8 +145,12 @@ fn run_streaming_cmd(
     if result.is_err() {
         let _ = child.kill(); // stall or bad stream — don't leave a zombie
     }
-    let _ = child.wait();
-    result
+    let status = child.wait().ok();
+    result.map_err(|e| match status {
+        // Not for the stall path (there the exit code is just our own kill).
+        Some(s) if !s.success() && !e.contains("no progress") => format!("{e} (lore exited with {s})"),
+        _ => e,
+    })
 }
 
 /// Drain the line channel with a stall timeout, parsing + relaying each event.
@@ -151,6 +161,7 @@ fn collect_streaming(
     on_event: &mut dyn FnMut(&LoreEvent),
 ) -> Result<Vec<LoreEvent>, String> {
     let mut events: Vec<LoreEvent> = Vec::new();
+    let mut skipped: usize = 0;
     loop {
         match rx.recv_timeout(stall) {
             Ok(line) => {
@@ -160,10 +171,24 @@ fn collect_streaming(
                 }
                 if let Ok(ev) = serde_json::from_str::<LoreEvent>(line) {
                     on_event(&ev);
+                    // Progress events from a very large clone are all retained
+                    // here (transiently up to tens of MB in the worst case);
+                    // callers (check_ok/events_with_tag) only need the
+                    // non-progress events. Worth trimming if a profile ever
+                    // shows this mattering — deferred until then.
                     events.push(ev);
+                } else {
+                    skipped += 1;
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if events.iter().any(|e| e.tag_name == "complete") {
+                    // The child already reported completion; the pipe just
+                    // never reached EOF (a helper process inherited the
+                    // stdout handle and is still holding it open). That is
+                    // not a stall — the operation itself succeeded.
+                    break;
+                }
                 return Err(format!(
                     "lore made no progress for {} s — operation aborted",
                     stall.as_secs().max(1)
@@ -173,7 +198,11 @@ fn collect_streaming(
         }
     }
     if !events.iter().any(|e| e.tag_name == "complete") {
-        return Err("lore did not emit a completion event".to_string());
+        return Err(if skipped > 0 {
+            format!("lore did not emit a completion event ({skipped} unparseable lines skipped)")
+        } else {
+            "lore did not emit a completion event".to_string()
+        });
     }
     check_ok(&events)?;
     Ok(events)
@@ -227,11 +256,34 @@ mod tests {
     }
 
     #[test]
+    fn no_completion_error_reports_skipped_garbage_lines() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send("not json at all".into()).unwrap();
+        tx.send("still not json".into()).unwrap();
+        drop(tx); // stream ends without complete
+        let err = collect_streaming(&rx, Duration::from_millis(500), &mut |_| {}).unwrap_err();
+        assert!(err.contains("2 unparseable"), "err was {err}");
+    }
+
+    #[test]
     fn streaming_silence_is_a_stall_error() {
         let (_tx, rx) = std::sync::mpsc::channel::<String>();
         // Sender alive but silent (fake hung child) → stall, not disconnect.
         let err = collect_streaming(&rx, Duration::from_millis(50), &mut |_| {}).unwrap_err();
         assert!(err.contains("no progress"), "err was {err}");
+    }
+
+    #[test]
+    fn timeout_after_complete_is_success_not_stall() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        tx.send(r#"{"tagName":"repositoryCloneProgress","data":{"done":10,"total":100}}"#.into()).unwrap();
+        tx.send(r#"{"tagName":"complete","data":{"status":0}}"#.into()).unwrap();
+        // NOTE: `tx` is deliberately kept alive (not dropped) — this reproduces
+        // a child that emitted `complete` but whose pipe never reaches EOF
+        // because a helper process inherited the stdout handle.
+        let events = collect_streaming(&rx, Duration::from_millis(50), &mut |_| {}).unwrap();
+        assert_eq!(events.len(), 2);
+        drop(tx);
     }
 
     #[test]
@@ -241,6 +293,22 @@ mod tests {
         tx.send(r#"{"tagName":"complete","data":{"status":1}}"#.into()).unwrap();
         drop(tx);
         assert!(collect_streaming(&rx, Duration::from_millis(500), &mut |_| {}).is_err());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn dead_child_error_includes_exit_status() {
+        // No stdout at all → the reader thread hits EOF immediately
+        // (Disconnected) without ever seeing a `complete` event.
+        let err = run_streaming_cmd(
+            "powershell",
+            &["-NoProfile", "-Command", "exit 3"],
+            Duration::from_millis(500),
+            &mut |_| {},
+        )
+        .unwrap_err();
+        assert!(err.contains("completion"), "err was {err}");
+        assert!(err.contains("exited"), "err was {err}");
     }
 
     #[test]
