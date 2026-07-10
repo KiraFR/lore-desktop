@@ -2,8 +2,10 @@ import type { ChangedFile } from './types'
 
 const KB = 1024
 const MB = 1024 * 1024
+const GB = 1024 * MB
 
 export function fmtSize(n: number): string {
+  if (n >= GB) return (n / GB).toFixed(1) + ' GB'
   if (n >= MB) return (n / MB).toFixed(1) + ' MB'
   if (n >= KB) return (n / KB).toFixed(1) + ' KB'
   return n + ' B'

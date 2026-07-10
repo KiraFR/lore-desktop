@@ -2,6 +2,7 @@ import { api } from './api'
 import { session } from './session.svelte'
 import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction } from './toast'
+import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
 import type { Branch, Commit, LockEntry, StatusResult } from './types'
 
 const HISTORY_PAGE = 200
@@ -81,6 +82,23 @@ export async function refreshBranches(silent = false) {
   catch (e) { if (!silent) toastError("Couldn't load branches", e) }
 }
 
+// Fire-and-forget enrichment: fetch the repository-revision sizes of the
+// modified/deleted files (ONE batch call) and merge them in as `oldSize`.
+// Failure or timeout is TOTAL silence — the deltas simply don't appear.
+// Never a toast for enrichment.
+async function refreshFileSizes() {
+  const path = session.config.currentRepo
+  if (!path || !repo.status) return
+  const paths = sizeLookupPaths(repo.status.files)
+  if (paths.length === 0) return
+  let sizes: Record<string, number>
+  try { sizes = await api.fileSizes(path, paths) } catch { return }
+  // The status may have been replaced while the sizes were in flight — only
+  // annotate the current one (paths that vanished are ignored by the merge).
+  if (repo.status && session.config.currentRepo === path)
+    repo.status.files = mergeOldSizes(repo.status.files, sizes)
+}
+
 // `silent` refreshes (e.g. the window-focus refresh) skip the `busy` flag so they
 // don't disable the action buttons or flash a loading state.
 export async function refreshStatus(silent = false) {
@@ -97,6 +115,7 @@ export async function refreshStatus(silent = false) {
   // They annotate / fill in when they arrive (or quietly no-op when offline).
   refreshLocks(true)
   refreshBranches(true)
+  refreshFileSizes()
 }
 
 async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Promise<void>) {

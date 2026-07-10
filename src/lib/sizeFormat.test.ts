@@ -7,6 +7,9 @@ describe('fmtSize', () => {
     expect(fmtSize(2048)).toBe('2.0 KB')
     expect(fmtSize(2359296)).toBe('2.3 MB')
   })
+  it('formats GB', () => {
+    expect(fmtSize(3 * 1073741824)).toBe('3.0 GB')
+  })
 })
 
 describe('formatDelta', () => {
@@ -33,5 +36,8 @@ describe('formatDelta', () => {
   })
   it('returns null for adds (unchanged from today)', () => {
     expect(formatDelta({ action: 'add', size: 4718592, oldSize: 10 })).toBeNull()
+  })
+  it('returns null for move/copy (unchanged from today)', () => {
+    expect(formatDelta({ action: 'move', size: 100, oldSize: 50 })).toBeNull()
   })
 })

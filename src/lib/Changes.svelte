@@ -3,6 +3,7 @@
   import { session } from './session.svelte'
   import { repo, commit, setLock, discardFile } from './repo.svelte'
   import { composeCommitMessage } from './commitMessage'
+  import { formatDelta } from './sizeFormat'
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
@@ -111,6 +112,7 @@
               <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
               {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
               <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
+              {#if formatDelta(f)}<span class="delta">{formatDelta(f)}</span>{/if}
               {#if f.lockedBy === 'you'}
                 <span class="lock"><Icon name="lock" size={11} /> you</span>
               {:else if f.lockedBy}
@@ -155,8 +157,9 @@
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
   .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }
-  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12.5px; }
+  .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12.5px; }
   .dir { color: var(--text-muted); }
+  .delta { flex-shrink: 0; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); }
   .lock { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); border-radius: 999px; padding: 1px 7px; }
   .lock.other { background: var(--panel); color: var(--text-muted); }
   .bin { margin-left: auto; flex-shrink: 0; font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
