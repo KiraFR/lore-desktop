@@ -529,10 +529,23 @@ pub(crate) fn image_preview(abs: &Path, ext: &str, max_px: u32, cache_dir: Optio
                 };
             }
         }
+        // A remembered failure: skip re-decoding (e.g. a 30 MB .spp rescan on
+        // every list refresh). The mtime+size key invalidates it on file change.
+        if dir.join(format!("{key}.none")).exists() {
+            return none();
+        }
     }
     let rgba = match decode(abs, ext) {
         Ok(r) => r,
-        Err(_) => return none(), // undecodable → generic icon, never a toast
+        Err(_) => {
+            // Undecodable → generic icon, never a toast — and remember it.
+            if let (Some(dir), Some(key)) = (cache_dir.as_ref(), key.as_ref()) {
+                if std::fs::create_dir_all(dir).is_ok() {
+                    let _ = std::fs::write(dir.join(format!("{key}.none")), b"");
+                }
+            }
+            return none();
+        }
     };
     let (w, h) = rgba.dimensions();
     let dyn_img = image::DynamicImage::ImageRgba8(rgba);
@@ -940,6 +953,21 @@ mod tests {
         assert!(is_model_ext("glb"));
         assert!(!is_model_ext("wav"));
         assert!(!is_model_ext("png"));
+    }
+
+    #[test]
+    fn decode_failure_is_cached_negatively() {
+        let d = dir("negcache");
+        let p = d.join("broken.png");
+        std::fs::write(&p, b"definitely not a png").unwrap();
+        let cache = d.join("thumbs");
+        assert_eq!(image_preview(&p, "png", 128, Some(cache.clone())).kind, "none");
+        let markers = std::fs::read_dir(&cache).unwrap().filter(|e| {
+            e.as_ref().unwrap().path().extension().map(|x| x == "none").unwrap_or(false)
+        }).count();
+        assert_eq!(markers, 1);
+        // Second call short-circuits on the marker and stays none.
+        assert_eq!(image_preview(&p, "png", 128, Some(cache)).kind, "none");
     }
 
     #[test]

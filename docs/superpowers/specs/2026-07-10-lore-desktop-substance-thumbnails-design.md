@@ -18,4 +18,5 @@
 ## Tests
 
 - Synthétiques committés : archive 7z construite en test (writer `sevenz-rust`) avec `assemblies/content/0000/icon1.png` (mini-PNG généré) → image ; 7z sans PNG → none ; fichier HDF5-magic + PNG embarqué → image ; HDF5-magic seul → none.
-- **Vérification réelle en attente** : aucun `.sbsar`/`.spp` sur la machine — à valider dès qu'un fichier d'exemple est fourni (noté comme dette de vérification).
+- **Vérification réelle `.spp` (2026-07-10, `ZeCube.spp` 33 Mo fourni par Jimmy)** : structure HDF5 inspectée intégralement (46 datasets) — **aucune vignette embarquée** (pas de dataset preview/thumbnail/icon ; les blobs sont dans un conteneur maison `m3` de Painter, magic `dd 2f 7c 1b`). La vignette « projets récents » de Painter est rendue par l'app, pas stockée. Le scan opportuniste retombe donc sur `none` comme prévu ; un vrai rendu `.spp` exigerait le moteur Substance (même catégorie que `.sbs`). Conséquence : **cache négatif** ajouté au pipeline (marqueur `<clé>.none`) pour ne pas relire/rescanner un gros fichier sans vignette à chaque rafraîchissement de liste — clé mtime+taille, donc invalidé au changement du fichier.
+- **Vérification réelle `.sbsar` toujours en attente** d'un fichier d'exemple.
