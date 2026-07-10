@@ -19,10 +19,12 @@ async function invokeWithProgress<T>(
   const opId = crypto.randomUUID()
   let unlisten: (() => void) | null = null
   if (onProgress) {
-    unlisten = await listen<WireProgress>('lore://op-progress', (e) => {
-      if (e.payload.opId === opId)
-        onProgress({ done: e.payload.done, total: e.payload.total, unit: e.payload.unit })
-    })
+    try {
+      unlisten = await listen<WireProgress>('lore://op-progress', (e) => {
+        if (e.payload.opId === opId)
+          onProgress({ done: e.payload.done, total: e.payload.total, unit: e.payload.unit })
+      })
+    } catch { /* progress is best-effort; the op itself must still run */ }
   }
   try {
     return await invoke<T>(cmd, { ...args, opId })

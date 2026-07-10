@@ -3,6 +3,8 @@
   import { session } from './session.svelte'
   import { addExistingRepo, cloneServerRepo } from './repoActions'
   import { toastError } from './toast'
+  import { opProgress } from './opProgress.svelte'
+  import { pct, cloneLabel } from './progress'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
@@ -64,8 +66,11 @@
         <div class="meta"><strong>{r.name}</strong><p class="muted small mono">{r.id.slice(0, 12)}…</p></div>
         <span class="spacer"></span>
         <button onclick={() => cloneRepo(r)} disabled={busy === `clone:${r.id}`}>
-          {busy === `clone:${r.id}` ? 'Cloning…' : 'Clone…'}
+          {busy === `clone:${r.id}` ? cloneLabel(pct(opProgress.clone)) : 'Clone…'}
         </button>
+        {#if busy === `clone:${r.id}`}
+          <span class="clonebar" class:indet={pct(opProgress.clone) === null} style="width: {pct(opProgress.clone) ?? 40}%"></span>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -81,7 +86,10 @@
   .small { font-size: 12px; margin: 2px 0 0; }
   .mono { font-family: var(--font-mono); }
   .repos { list-style: none; padding: 0; margin: 0; }
-  .repos li { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); }
+  .repos li { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); position: relative; overflow: hidden; }
   .ico { color: var(--accent); }
   .meta { min-width: 0; }
+  .clonebar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); transition: width .25s ease; }
+  .clonebar.indet { animation: pickerslide 1.1s linear infinite; }
+  @keyframes pickerslide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
 </style>

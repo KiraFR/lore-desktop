@@ -3,6 +3,7 @@ import { session } from './session.svelte'
 import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction } from './toast'
 import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
+import { opProgress } from './opProgress.svelte'
 import type { Branch, Commit, LockEntry, StatusResult } from './types'
 
 const HISTORY_PAGE = 200
@@ -140,7 +141,10 @@ async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Prom
 
 export const commit = (message: string, exclude: string[] = []) =>
   act('commit', (p) => api.commitAll(p, message, exclude))
-export const sync = () => act('sync', (p) => api.sync(p))
+export const sync = () => act('sync', async (p) => {
+  try { await api.sync(p, (prog) => { opProgress.sync = prog }) }
+  finally { opProgress.sync = null }
+})
 
 // Push, then offer to release the locks the user held on files that were part of
 // this push (the lock-workflow's "done editing" step). The candidate set must be
@@ -148,7 +152,8 @@ export const sync = () => act('sync', (p) => api.sync(p))
 export const push = () => act('push', async (p) => {
   let candidates: string[] = []
   try { candidates = await api.pushedLockFiles(p) } catch { /* best-effort; never block the push */ }
-  await api.push(p)
+  try { await api.push(p, (prog) => { opProgress.push = prog }) }
+  finally { opProgress.push = null }
   if (candidates.length) {
     const n = candidates.length
     toastAction(`${n} locked file${n > 1 ? 's' : ''} pushed`, {

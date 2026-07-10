@@ -2,6 +2,8 @@
   import { session } from './session.svelte'
   import { repo, sync, push } from './repo.svelte'
   import { initialsFor } from './identity'
+  import { opProgress } from './opProgress.svelte'
+  import { pct } from './progress'
   import Icon from './Icon.svelte'
   import BranchMenu from './BranchMenu.svelte'
   import RepoSwitcher from './RepoSwitcher.svelte'
@@ -72,11 +74,17 @@
       <Icon name="sync" size={16} />
       <span>{repo.busy === 'sync' ? 'Syncing…' : 'Sync'}</span>
       {#if repo.status?.remoteAhead}<span class="count">{repo.status.remoteAhead}</span>{/if}
+      {#if repo.busy === 'sync'}
+        <span class="opbar" class:indet={pct(opProgress.sync) === null} style="width: {pct(opProgress.sync) ?? 40}%"></span>
+      {/if}
     </button>
     <button class="action accent" onclick={push} disabled={!!repo.busy || noRemote || (repo.status?.localAhead ?? 0) === 0} title={noRemote ? 'Server unreachable — push is unavailable' : 'Push'}>
       <Icon name="push" size={16} />
       <span>{repo.busy === 'push' ? 'Pushing…' : 'Push'}</span>
       {#if repo.status?.localAhead}<span class="count on">{repo.status.localAhead}</span>{/if}
+      {#if repo.busy === 'push'}
+        <span class="opbar" class:indet={pct(opProgress.push) === null} style="width: {pct(opProgress.push) ?? 40}%"></span>
+      {/if}
     </button>
   {/if}
 
@@ -95,9 +103,13 @@
   .lbl { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; text-align: left; }
   .cap { font-size: 10.5px; color: var(--text-muted); }
   .val { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .action { display: flex; align-items: center; gap: 6px; height: 32px; }
+  .action { display: flex; align-items: center; gap: 6px; height: 32px; position: relative; overflow: hidden; }
   .action .count { font-size: 11px; color: var(--text-muted); }
   .action .count.on { color: var(--on-accent); opacity: .85; }
+  .opbar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); transition: width .25s ease; }
+  .action.accent .opbar { background: var(--on-accent); opacity: .85; }
+  .opbar.indet { animation: opslide 1.1s linear infinite; }
+  @keyframes opslide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
   .avatarzone { position: relative; }
   .avatar { width: 30px; height: 30px; border-radius: 50%; padding: 0; background: var(--accent-soft); color: var(--accent); border: none; font-size: 11px; font-weight: 500; }
   .avatar.open { outline: 2px solid var(--accent); }

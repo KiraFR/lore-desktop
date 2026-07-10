@@ -4,6 +4,8 @@
   import { addExistingRepo, cloneServerRepo } from './repoActions'
   import { filterRepos, repoName } from './repoList'
   import { toastError } from './toast'
+  import { opProgress } from './opProgress.svelte'
+  import { pct, cloneLabel } from './progress'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
@@ -113,9 +115,12 @@
             <Icon name="folder" size={15} />
             <span class="meta">
               <span class="rn">{r.name}</span>
-              <span class="rp">{busy === `clone:${r.id}` ? 'Cloning…' : r.id.slice(0, 12) + '…'}</span>
+              <span class="rp">{busy === `clone:${r.id}` ? cloneLabel(pct(opProgress.clone)) : r.id.slice(0, 12) + '…'}</span>
             </span>
           </button>
+          {#if busy === `clone:${r.id}`}
+            <span class="clonebar" class:indet={pct(opProgress.clone) === null} style="width: {pct(opProgress.clone) ?? 40}%"></span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -133,7 +138,10 @@
   .sec { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); padding: 2px 12px 5px; }
   .empty { margin: 2px 12px 8px; font-size: 12px; color: var(--text-muted); }
   .list { max-height: 300px; overflow-y: auto; overflow-x: hidden; }
-  .rowwrap { position: relative; }
+  .rowwrap { position: relative; overflow: hidden; }
+  .clonebar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); transition: width .25s ease; }
+  .clonebar.indet { animation: switcherslide 1.1s linear infinite; }
+  @keyframes switcherslide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
   .item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }
   .item:hover:not(:disabled) { background: var(--panel-hover); border: none; }
   .item.cur { color: var(--accent-text); }
