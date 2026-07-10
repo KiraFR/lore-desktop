@@ -1,0 +1,4 @@
+{"tagName":"repositoryCloneProgress","data":{"count":{"fileComplete":0,"fileRetain":0,"fileReplace":0,"fileCount":0,"fileInflight":0,"fragmentInflight":2,"bytesTransferred":0,"bytesTotal":0,"discoveryComplete":false}}}
+{"tagName":"repositoryCloneProgress","data":{"count":{"fileComplete":0,"fileRetain":0,"fileReplace":0,"fileCount":6,"fileInflight":0,"fragmentInflight":0,"bytesTransferred":0,"bytesTotal":202,"discoveryComplete":true}}}
+{"tagName":"repositoryCloneProgress","data":{"count":{"fileComplete":6,"fileRetain":0,"fileReplace":0,"fileCount":6,"fileInflight":0,"fragmentInflight":0,"bytesTransferred":202,"bytesTotal":202,"discoveryComplete":true}}}
+{"tagName":"complete","data":{"status":0}}

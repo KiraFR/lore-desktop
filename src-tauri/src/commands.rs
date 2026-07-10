@@ -542,24 +542,50 @@ pub struct OpProgressPayload {
     pub unit: Option<&'static str>, // "bytes" | "files"
 }
 
-/// Map a progress event to `(done, total)`. `repositoryCloneProgress` is the
-/// slice-B-observed tag (unconfirmed pending the Task 13 capture); any
-/// `…Progress` event with a `done`/`current` count qualifies, so the sync/push
-/// equivalents discovered at capture time are relayed too.
-// TODO(Task 13): tighten the suffix heuristic to an explicit tag allow-list once the capture pins the real names.
+/// Progress-bearing tags actually observed during the Task 13 capture
+/// (clone/push/sync against a real server) — replaces the earlier
+/// `ends_with("Progress")` heuristic now that the real names are pinned.
+/// Each op emits a DIFFERENT wire shape (see `op_progress_from`); a push or
+/// sync covering several revisions emits one Begin/Progress…/End burst PER
+/// revision, so `done`/`total` legitimately resets to 0 multiple times within
+/// a single operation — that is real progress, not a bug.
+const OP_PROGRESS_TAGS: &[&str] =
+    &["repositoryCloneProgress", "branchPushFragmentProgress", "revisionSyncProgress"];
+
+/// Map a progress event to `(done, total)` in bytes. Field names differ per
+/// operation (pinned against tests/fixtures/clone_progress.ndjson and the
+/// Task 13 live capture of push/sync):
+/// - `repositoryCloneProgress`: nested under `count` — `bytesTransferred` / `bytesTotal`.
+/// - `branchPushFragmentProgress`: top-level — `bytesTransferred` / `bytesTotal`.
+/// - `revisionSyncProgress`: top-level — `bytesUpdate` / `bytesUpdateTotal`.
+/// A `total` of exactly 0 means "not yet discovered" (observed before the
+/// discovery pass completes) and is treated as unknown, not "already done" —
+/// otherwise the first tick of an op would read as 100%.
 fn op_progress_from(ev: &LoreEvent) -> Option<(u64, Option<u64>)> {
-    if !ev.tag_name.ends_with("Progress") {
+    if !OP_PROGRESS_TAGS.contains(&ev.tag_name.as_str()) {
         return None;
     }
     let d = &ev.data;
-    let done = d.get("done").or_else(|| d.get("current")).and_then(|v| v.as_u64())?;
-    let total = d.get("total").and_then(|v| v.as_u64());
+    // `count` is an object only for clone (`{"count":{"bytesTransferred":…}}`);
+    // for push it's a plain fragment-count number, so only descend when it's
+    // actually an object — otherwise treat `count`'s presence as unrelated.
+    let src = d.get("count").filter(|v| v.is_object()).unwrap_or(d);
+    let done = src
+        .get("bytesTransferred")
+        .or_else(|| src.get("bytesUpdate"))
+        .and_then(|v| v.as_u64())?;
+    let total = src
+        .get("bytesTotal")
+        .or_else(|| src.get("bytesUpdateTotal"))
+        .and_then(|v| v.as_u64())
+        .filter(|&t| t > 0);
     Some((done, total))
 }
 
-/// Unit of the progress counts — UNKNOWN until the Task 13 capture pins it
-/// (bytes or files); None keeps the UI honest (percentage only, no unit label).
-const OP_PROGRESS_UNIT: Option<&'static str> = None;
+/// Unit of the progress counts — confirmed bytes by the Task 13 capture: the
+/// clone fixture's `count.bytesTotal` (202) equals the exact sum of the 6
+/// tracked file sizes in the test repo.
+const OP_PROGRESS_UNIT: Option<&'static str> = Some("bytes");
 
 /// Minimum spacing between two `lore://op-progress` emits for the same
 /// operation, so a fast-ticking child (thousands of small files) doesn't
@@ -2025,13 +2051,25 @@ mod op_progress_tests {
     use super::*;
     use crate::lore::parse_events;
 
-    // maps_clone_progress_fixture: added with the deferred Task 13 capture (server was unreachable).
+    /// The captured fixture must yield the 3 progress ticks from a real clone
+    /// (see tests/fixtures/clone_progress.ndjson): 0/0 (undiscovered), 0/202,
+    /// 202/202 — the `complete` event is not a progress tick.
+    #[test]
+    fn maps_clone_progress_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/clone_progress.ndjson")).unwrap();
+        let ticks: Vec<_> = events.iter().filter_map(op_progress_from).collect();
+        assert!(!ticks.is_empty(), "the captured fixture must yield progress ticks");
+        assert_eq!(ticks, vec![(0, None), (0, Some(202)), (202, Some(202))]);
+    }
 
     #[test]
-    fn maps_done_total_and_ignores_other_events() {
+    fn maps_clone_progress_nested_under_count_and_ignores_other_events() {
+        // Real wire shape (Task 13 capture): bytesTransferred/bytesTotal nested
+        // under `count`, not top-level `done`/`total` as slice B had assumed.
         let sample = concat!(
-            r#"{"tagName":"repositoryCloneProgress","data":{"done":512,"total":2048}}"#, "\n",
+            r#"{"tagName":"repositoryCloneProgress","data":{"count":{"bytesTransferred":512,"bytesTotal":2048,"discoveryComplete":true}}}"#, "\n",
             r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main"}}"#, "\n",
+            r#"{"tagName":"repositoryCloneBegin","data":{"branch":"main"}}"#, "\n",
             r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
         );
         let events = parse_events(sample).unwrap();
@@ -2040,14 +2078,39 @@ mod op_progress_tests {
     }
 
     #[test]
-    fn progress_without_total_is_indeterminate() {
+    fn maps_push_progress_top_level_bytes_fields() {
+        // Real wire shape: branchPushFragmentProgress, top-level bytesTransferred/bytesTotal.
         let sample = concat!(
-            r#"{"tagName":"repositorySyncProgress","data":{"done":3}}"#, "\n",
+            r#"{"tagName":"branchPushFragmentProgress","data":{"complete":198,"count":559,"bytesTransferred":12131335,"bytesTotal":34073067}}"#, "\n",
             r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
         );
         let events = parse_events(sample).unwrap();
         let ticks: Vec<_> = events.iter().filter_map(op_progress_from).collect();
-        assert_eq!(ticks, vec![(3, None)]);
+        assert_eq!(ticks, vec![(12131335, Some(34073067))]);
+    }
+
+    #[test]
+    fn maps_sync_progress_bytes_update_fields() {
+        // Real wire shape: revisionSyncProgress, top-level bytesUpdate/bytesUpdateTotal.
+        let sample = concat!(
+            r#"{"tagName":"revisionSyncProgress","data":{"fileUpdate":0,"fileUpdateTotal":1,"bytesUpdate":0,"bytesUpdateTotal":67,"discoveryComplete":true}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let ticks: Vec<_> = events.iter().filter_map(op_progress_from).collect();
+        assert_eq!(ticks, vec![(0, Some(67))]);
+    }
+
+    #[test]
+    fn progress_without_total_is_indeterminate() {
+        // Pre-discovery sync tick: total present but 0 ("not yet known"), not "already done".
+        let sample = concat!(
+            r#"{"tagName":"revisionSyncProgress","data":{"fileUpdate":0,"fileUpdateTotal":0,"bytesUpdate":0,"bytesUpdateTotal":0,"discoveryComplete":false}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let ticks: Vec<_> = events.iter().filter_map(op_progress_from).collect();
+        assert_eq!(ticks, vec![(0, None)]);
     }
 
     #[test]

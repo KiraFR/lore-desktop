@@ -58,3 +58,32 @@ un stage) : vérifier `revisionMerged` en premier — `revisionStaged != 0` seul
 distingue pas « stagé simple » de « merge en cours » (précédence du chip).
 Captures : status_merge.ndjson (pendant `branch merge start` conflictuel),
 status_staged.ndjson (après `stage .` sans commit).
+
+**Progression clone/sync/push** (fixture clone_progress.ndjson pour le clone ;
+sync/push observés en live, pas committés en fixture séparée — voir ci-dessous) :
+les hypothèses slice B (`done`/`current` + `total?` en top-level) étaient
+**fausses**. Trois tags distincts, trois encodages distincts, tous confirmés en
+**octets** :
+
+- `repositoryCloneProgress` : imbriqué sous `data.count` — `bytesTransferred` /
+  `bytesTotal` (+ `fileComplete`/`fileCount` en alternative fichiers). Vérifié :
+  `bytesTotal` (202) == somme exacte des tailles des 6 fichiers trackés du repo
+  de test. Avant la fin de la découverte, `bytesTotal` vaut `0` (pas "déjà
+  fini") — traité comme total inconnu.
+- `branchPushFragmentProgress` (push) : top-level — `bytesTransferred` /
+  `bytesTotal` (+ `complete`/`count` en alternative fragments). Un push
+  multi-révisions émet **une rafale Begin/Progress…/End par révision poussée** —
+  `done`/`total` repart légitimement à 0 plusieurs fois pendant un seul push,
+  ce n'est pas un bug. `bytesTotal` grandit lui-même en cours de rafale (la
+  taille totale du lot est elle aussi découverte progressivement, comme pour le
+  clone) avant de se stabiliser.
+- `revisionSyncProgress` (sync) : top-level, noms différents — `bytesUpdate` /
+  `bytesUpdateTotal` (+ `fileUpdate`/`fileUpdateTotal`). Un sync déjà à jour
+  (`isLatest:1`, aucun delta) n'émet **aucun** événement de progression —
+  barre indéterminée, comportement prévu.
+
+Les trois tags se terminent bien par `Progress`, mais leurs champs ne
+partagent aucun nom commun sauf le **préfixe `bytes…`** — `op_progress_from`
+(commands.rs) utilise une allow-list explicite des trois tags + une recherche
+de champ à plusieurs candidats (`count.bytesTransferred`/`count.bytesTotal`,
+`bytesTransferred`/`bytesTotal`, `bytesUpdate`/`bytesUpdateTotal`).

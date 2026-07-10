@@ -90,11 +90,24 @@ pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
 /// that keeps making progress is never killed — this replaces the flat 45 s cap
 /// for clone/sync/push, which legitimately run for minutes on studio binaries.
 ///
-/// Assumes lore emits chunk-granular progress during transfers. UNVERIFIED
-/// against a real clone (capture blocked — server unreachable): if progress
-/// turns out to be per-file, a single multi-GB asset transfer could
-/// stall-kill legitimately — revisit this constant (or make it per-operation)
-/// with the Task 13 capture.
+/// Granularity, per the Task 13 live capture against a real server: progress
+/// ticks are **not** simply one-per-file. `repositoryCloneProgress` (clone)
+/// and `revisionSyncProgress` (sync) each report byte counters
+/// (`bytesTransferred`/`bytesTotal`, nested under `count` for clone) alongside
+/// file counters. `branchPushFragmentProgress` (push) ticks per fragment
+/// batch, irregularly — over a 559-fragment/34 MB push the observed complete
+/// counts were 0, 5, 6, 34, 101, 198, 534, 534, 559: bursty, not one emit per
+/// fragment, suggesting the CLI itself batches/throttles emission rather than
+/// reporting strictly per file or per fragment. A push/sync spanning several
+/// revisions also emits one full Begin/Progress…/End burst *per revision*, so
+/// silence between two revisions' bursts is still possible.
+///
+/// The captured test repo is tiny (KB-scale) and the whole multi-revision push
+/// completed in well under a second, so this does NOT establish an upper bound
+/// on inter-tick silence for a large binary (e.g. one multi-GB `.uasset` as a
+/// single fragment/file). If lore only ticks between whole large files rather
+/// than within one, 60 s could still be too tight for a big single-asset
+/// transfer on a slow link — worth a discussion, but not changed here.
 pub const LORE_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Run `lore <args> --json` streaming stdout line by line. Each NDJSON event is
