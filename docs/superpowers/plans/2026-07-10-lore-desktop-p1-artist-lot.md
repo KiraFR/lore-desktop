@@ -1,5 +1,22 @@
 # Lore Desktop — Lot P1 « artiste au quotidien » Implementation Plan
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-11** (subagent-driven, 18/18 tâches, double
+> revue par tâche + revue finale d'ensemble : Ready). Suites : cargo 95, vitest 99,
+> check 0. Vérification E2E réelle (Task 18) passée contre le serveur — delta réel,
+> chip merge/staged en merge conflictuel réel, clone/push streaming sans timeout.
+> Déviations conscientes vs plan : capture Task 13 exécutée APRÈS 14-17 (serveur
+> indisponible une partie de la journée — les hypothèses slice B se sont révélées
+> fausses, parseur réécrit sur les encodages réels) ; libellé clone en pourcentage
+> seul (le « X / Y » de la spec n'est pas affiché — à acter ou ajouter, le champ
+> `unit` est câblé bout en bout mais inutilisé) ; fixtures push/sync non committées
+> (shapes pinnées par samples inline + README). Follow-ups consignés dans le rapport
+> de session : garde globale anti double-clone cross-surface (low), vue Merge
+> (nom de branche source erroné si merge démarré hors app + vue stale après abort
+> externe — préexistants), sémantique du hash staged « vide » côté CLI (chip staged
+> possiblement persistant — à remonter à l'équipe Lore), fenêtre de stall 60 s à
+> discuter avant déploiement studio avec assets multi-GB, subscribers notifications
+> orphelins après kill dur de l'app (préexistant).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Livrer les 4 items du lot P1 (spec `docs/superpowers/specs/2026-07-10-lore-desktop-p1-artist-lot-design.md`) : delta de poids d'asset, section « Locked by teammates » stricte, chip StatusBar merge/staged, et progression streaming clone/sync/push avec détection de blocage remplaçant le timeout 45 s.
