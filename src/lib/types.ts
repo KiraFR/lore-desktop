@@ -18,6 +18,10 @@ export interface StatusResult {
   remoteAvailable: boolean
   /** False when the stored session is no longer accepted. */
   remoteAuthorized: boolean
+  /** A merge is waiting for conflict resolution — the Merge view can resume it. */
+  mergeInProgress: boolean
+  /** An interrupted commit/merge left a staged state; picked up by the next commit/merge. */
+  stagedPending: boolean
   files: ChangedFile[]
 }
 

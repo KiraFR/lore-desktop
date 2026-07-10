@@ -157,3 +157,17 @@ describe('mock.fileSizes', () => {
     expect(sizes['Content/Characters/Hero/SK_Hero.uasset']).toBeUndefined()
   })
 })
+
+describe('mock status flags', () => {
+  it('reports no merge and no staged state by default', async () => {
+    const s = await mock.getStatus('C:/repos/flags')
+    expect(s.mergeInProgress).toBe(false)
+    expect(s.stagedPending).toBe(false)
+  })
+  it('reports mergeInProgress while a conflicting merge is open', async () => {
+    await mock.mergeStart('C:/repos/flags', 'feature/loot')
+    expect((await mock.getStatus('C:/repos/flags')).mergeInProgress).toBe(true)
+    await mock.mergeAbort('C:/repos/flags')
+    expect((await mock.getStatus('C:/repos/flags')).mergeInProgress).toBe(false)
+  })
+})

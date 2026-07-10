@@ -227,6 +227,10 @@ export const mock: LoreApi = {
     return {
       branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,
       revisionNumber: 5, remoteAvailable: true, remoteAuthorized: true,
+      mergeInProgress: mergeConflictState.length > 0,
+      // Dev lever: `localStorage.setItem('loredesktop.mock.staged', '1')` in the
+      // browser devtools to preview the staged chip; removeItem to clear it.
+      stagedPending: typeof localStorage !== 'undefined' && localStorage.getItem('loredesktop.mock.staged') === '1',
       files: [...s.files],
     } as StatusResult
   },
