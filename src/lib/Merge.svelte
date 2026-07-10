@@ -45,6 +45,7 @@
         conflicts = existing
         selectedPath = existing[0].path
         phase = 'resolving'
+        refreshStatus() // mergeInProgress → StatusBar chip, resumable from elsewhere
       }
     }).catch(() => { /* no in-progress merge */ })
   })
@@ -90,6 +91,7 @@
       resolvedSide = {}
       selectedPath = conflicts[0]?.path ?? null
       phase = 'resolving'
+      await refreshStatus() // mergeInProgress → StatusBar chip, resumable from elsewhere
     } catch (e) { toastError('Merge failed', e) }
     finally { busy = '' }
   }

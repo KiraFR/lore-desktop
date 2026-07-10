@@ -21,4 +21,7 @@ describe('chipFor', () => {
   it('merge takes precedence over staged (a merge implies a staged state)', () => {
     expect(chipFor({ ...base, mergeInProgress: true, stagedPending: true })).toEqual({ kind: 'merge' })
   })
+  it('shows the merge chip when only mergeInProgress is set', () => {
+    expect(chipFor({ ...base, mergeInProgress: true })).toEqual({ kind: 'merge' })
+  })
 })

@@ -166,7 +166,10 @@ describe('mock status flags', () => {
   })
   it('reports mergeInProgress while a conflicting merge is open', async () => {
     await mock.mergeStart('C:/repos/flags', 'feature/loot')
-    expect((await mock.getStatus('C:/repos/flags')).mergeInProgress).toBe(true)
+    const duringMerge = await mock.getStatus('C:/repos/flags')
+    expect(duringMerge.mergeInProgress).toBe(true)
+    // Invariant: a merge implies a staged state.
+    expect(duringMerge.stagedPending).toBe(true)
     await mock.mergeAbort('C:/repos/flags')
     expect((await mock.getStatus('C:/repos/flags')).mergeInProgress).toBe(false)
   })

@@ -136,6 +136,7 @@ function buildBranches(extra: number): Branch[] {
 let branchList: Branch[] = buildBranches(2000)
 
 // In-progress merge conflicts (mock): populated by mergeStart, cleared by commit/abort.
+// Deliberately global (like branchList/lockList below), not per-repo.
 let mergeConflictState: MergeConflict[] = []
 
 let lockList: LockEntry[] = [
@@ -228,9 +229,10 @@ export const mock: LoreApi = {
       branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,
       revisionNumber: 5, remoteAvailable: true, remoteAuthorized: true,
       mergeInProgress: mergeConflictState.length > 0,
-      // Dev lever: `localStorage.setItem('loredesktop.mock.staged', '1')` in the
-      // browser devtools to preview the staged chip; removeItem to clear it.
-      stagedPending: typeof localStorage !== 'undefined' && localStorage.getItem('loredesktop.mock.staged') === '1',
+      // A merge implies a staged state; otherwise, dev lever:
+      // `localStorage.setItem('loredesktop.mock.staged', '1')` in the browser
+      // devtools to preview the staged chip; removeItem to clear it.
+      stagedPending: mergeConflictState.length > 0 || localStorage.getItem('loredesktop.mock.staged') === '1',
       files: [...s.files],
     } as StatusResult
   },
