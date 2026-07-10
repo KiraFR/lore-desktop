@@ -233,7 +233,7 @@ export const mock: LoreApi = {
   async fileSizes(_repoPath: string, paths: string[]) {
     await delay(400)
     const out: Record<string, number> = {}
-    for (const p of paths) if (MOCK_OLD_SIZES[p] != null) out[p] = MOCK_OLD_SIZES[p]
+    for (const p of paths) if (Object.hasOwn(MOCK_OLD_SIZES, p)) out[p] = MOCK_OLD_SIZES[p]
     return out
   },
   async getDiff(_repoPath: string, _path: string) {

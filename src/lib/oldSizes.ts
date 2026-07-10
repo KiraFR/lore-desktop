@@ -1,8 +1,11 @@
 import type { ChangedFile } from './types'
 
+/** Only modify/delete rows have an "old" (repository-revision) size. */
+const hasOldSide = (f: ChangedFile) => f.action === 'modify' || f.action === 'delete'
+
 /** The paths worth a `file info` lookup: only modify/delete have an "old" size. */
 export function sizeLookupPaths(files: ChangedFile[]): string[] {
-  return files.filter((f) => f.action === 'modify' || f.action === 'delete').map((f) => f.path)
+  return files.filter(hasOldSide).map((f) => f.path)
 }
 
 /**
@@ -13,7 +16,7 @@ export function sizeLookupPaths(files: ChangedFile[]): string[] {
  */
 export function mergeOldSizes(files: ChangedFile[], sizes: Record<string, number>): ChangedFile[] {
   return files.map((f) =>
-    (f.action === 'modify' || f.action === 'delete') && sizes[f.path] != null
+    hasOldSide(f) && Object.hasOwn(sizes, f.path)
       ? { ...f, oldSize: sizes[f.path] }
       : f,
   )

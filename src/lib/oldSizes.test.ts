@@ -31,4 +31,8 @@ describe('mergeOldSizes', () => {
     expect(out).toHaveLength(1)
     expect(out[0].oldSize).toBe(100)
   })
+  it('does not treat inherited prototype properties as a reported size', () => {
+    const out = mergeOldSizes([f('constructor', 'modify')], {})
+    expect(out[0].oldSize).toBeUndefined()
+  })
 })
