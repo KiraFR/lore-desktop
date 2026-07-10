@@ -53,5 +53,8 @@ still ends with the usual `{"tagName":"complete","data":{"status":0}}`.
 **Merge/staged dans `repositoryStatusRevision`** : `revisionMerged` (hash — non-zéro
 = merge en cours) et `revisionStaged` (hash — non-zéro = état stagé résiduel).
 Un hash all-zeros (64 × '0') ou un champ absent (CLI plus ancien) = false.
+Pendant un merge, `revisionStaged` est **également** non-zéro (le merge implique
+un stage) : vérifier `revisionMerged` en premier — `revisionStaged != 0` seul ne
+distingue pas « stagé simple » de « merge en cours » (précédence du chip).
 Captures : status_merge.ndjson (pendant `branch merge start` conflictuel),
 status_staged.ndjson (après `stage .` sans commit).
