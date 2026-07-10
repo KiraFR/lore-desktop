@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo, commit, setLock, discardFile } from './repo.svelte'
@@ -30,9 +31,13 @@
   const branch = $derived(repo.status?.branch ?? 'main')
   const stagedCount = $derived(files.filter((f) => staged.has(f.path)).length)
 
-  // Default: everything staged. Re-sync whenever the file set changes.
+  // Default: everything staged. Re-sync only when the SET of paths actually
+  // changes — locks/sizes enrichment replaces `files` (new array, same paths)
+  // every ~400ms, which must not re-check boxes the user just unchecked.
+  const pathKey = $derived(files.map((f) => f.path).join('\n'))
   $effect(() => {
-    staged = new Set(files.map((f) => f.path))
+    pathKey
+    staged = new Set(untrack(() => files).map((f) => f.path))
   })
 
   // Queue row thumbnails for previewable images (deleted files have no working copy).
@@ -103,6 +108,7 @@
     {:else}
       <ul>
         {#each shown as f (f.path)}
+          {@const d = formatDelta(f)}
           <li class="file" class:sel={f.path === selectedPath}
               oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
             <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
@@ -112,7 +118,7 @@
               <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
               {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
               <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
-              {#if formatDelta(f)}<span class="delta">{formatDelta(f)}</span>{/if}
+              {#if d}<span class="delta">{d}</span>{/if}
               {#if f.lockedBy === 'you'}
                 <span class="lock"><Icon name="lock" size={11} /> you</span>
               {:else if f.lockedBy}
@@ -160,9 +166,9 @@
   .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12.5px; }
   .dir { color: var(--text-muted); }
   .delta { flex-shrink: 0; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); }
-  .lock { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); border-radius: 999px; padding: 1px 7px; }
+  .lock { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); border-radius: 999px; padding: 1px 7px; }
   .lock.other { background: var(--panel); color: var(--text-muted); }
-  .bin { margin-left: auto; flex-shrink: 0; font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
+  .bin { flex-shrink: 0; font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
   .empty { flex: 1; display: grid; place-items: center; }
   .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--bg-elev); }
   .composer textarea { resize: none; }

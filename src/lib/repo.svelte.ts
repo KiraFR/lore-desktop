@@ -86,16 +86,20 @@ export async function refreshBranches(silent = false) {
 // modified/deleted files (ONE batch call) and merge them in as `oldSize`.
 // Failure or timeout is TOTAL silence — the deltas simply don't appear.
 // Never a toast for enrichment.
+let sizesToken = 0
 async function refreshFileSizes() {
+  const token = ++sizesToken
   const path = session.config.currentRepo
   if (!path || !repo.status) return
   const paths = sizeLookupPaths(repo.status.files)
   if (paths.length === 0) return
   let sizes: Record<string, number>
   try { sizes = await api.fileSizes(path, paths) } catch { return }
-  // The status may have been replaced while the sizes were in flight — only
-  // annotate the current one (paths that vanished are ignored by the merge).
-  if (repo.status && session.config.currentRepo === path)
+  // The status may have been replaced while the sizes were in flight, or a
+  // newer refreshFileSizes call may have already landed out of order — only
+  // the latest call may annotate the current status (paths that vanished
+  // are ignored by the merge).
+  if (token === sizesToken && repo.status && session.config.currentRepo === path)
     repo.status.files = mergeOldSizes(repo.status.files, sizes)
 }
 
