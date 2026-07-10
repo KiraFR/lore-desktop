@@ -6,6 +6,7 @@
   import { composeCommitMessage } from './commitMessage'
   import { formatDelta } from './sizeFormat'
   import { partitionByLock, filterByQuery } from './changesPartition'
+  import type { ChangedFile } from './types'
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
@@ -38,10 +39,19 @@
   // Default: every committable file staged. Teammate-locked files are NEVER
   // staged — exclusion by construction (doCommit excludes everything unstaged),
   // so there is no way to commit them from the app. Rebuilt only when the
-  // committable path set actually changes (enrichment merges keep selection).
+  // committable path set actually changes (enrichment merges keep selection,
+  // and so does a teammate locking/unlocking a file elsewhere in the list).
+  //
+  // Invariant preserved across rebuilds: a brand-new path arrives staged;
+  // a path we already knew about keeps whatever staged/unstaged state the
+  // user left it in; a path that disappeared is simply dropped.
+  let prevCommittable = new Set<string>()
   $effect(() => {
     committablePathKey
-    staged = new Set(untrack(() => parts.committable).map((f) => f.path))
+    const committable = untrack(() => parts.committable).map((f) => f.path)
+    const prevStaged = untrack(() => staged)
+    staged = new Set(committable.filter((p) => !prevCommittable.has(p) || prevStaged.has(p)))
+    prevCommittable = new Set(committable)
   })
 
   // Queue row thumbnails for previewable images (deleted files have no working copy).
@@ -112,53 +122,55 @@
     {:else if shownCount === 0}
       <p class="muted pad">No files match.</p>
     {:else}
-      <ul>
-        {#each shownCommittable as f (f.path)}
-          {@const d = formatDelta(f)}
-          <li class="file" class:sel={f.path === selectedPath}
-              oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
-            <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
-            <div class="rowmain" role="button" tabindex="0"
-                 onclick={() => onselect(f.path)}
-                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect(f.path) } }}>
-              <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
-              {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
-              <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
-              {#if d}<span class="delta">{d}</span>{/if}
-              {#if f.lockedBy === 'you'}
-                <span class="lock"><Icon name="lock" size={11} /> you</span>
-              {:else if f.isBinary}
-                <span class="bin">bin</span>
-              {/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
+      {#if parts.committable.length === 0 && files.length > 0}
+        <p class="muted pad">All changed files are locked by teammates.</p>
+      {/if}
+      {#if shownCommittable.length > 0}
+        <ul>
+          {#each shownCommittable as f (f.path)}
+            <li class="file" class:sel={f.path === selectedPath}
+                oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
+              <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
+              {@render fileRow(f, false)}
+            </li>
+          {/each}
+        </ul>
+      {/if}
       {#if shownLocked.length > 0}
-        <div class="lockedhead">
+        <div class="lockedhead" role="heading" aria-level="3" id="locked-head">
           <Icon name="lock" size={12} />
           <span>Locked by teammates ({shownLocked.length}) — excluded from commit</span>
         </div>
-        <ul>
+        <ul aria-labelledby="locked-head">
           {#each shownLocked as f (f.path)}
-            {@const d = formatDelta(f)}
             <li class="file locked" class:sel={f.path === selectedPath}
                 oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
-              <div class="rowmain" role="button" tabindex="0"
-                   onclick={() => onselect(f.path)}
-                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect(f.path) } }}>
-                <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
-                {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
-                <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
-                {#if d}<span class="delta">{d}</span>{/if}
-                <span class="lock other"><Icon name="lock" size={11} /> {f.lockedBy}</span>
-              </div>
+              {@render fileRow(f, true)}
             </li>
           {/each}
         </ul>
       {/if}
     {/if}
   </div>
+
+  {#snippet fileRow(f: ChangedFile, locked: boolean)}
+    {@const d = formatDelta(f)}
+    <div class="rowmain" role="button" tabindex="0"
+         onclick={() => onselect(f.path)}
+         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect(f.path) } }}>
+      <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
+      {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
+      <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
+      {#if d}<span class="delta">{d}</span>{/if}
+      {#if locked}
+        <span class="lock other" aria-label="Locked by {f.lockedBy}"><Icon name="lock" size={11} /> {f.lockedBy}</span>
+      {:else if f.lockedBy === 'you'}
+        <span class="lock" aria-label="Locked by you"><Icon name="lock" size={11} /> you</span>
+      {:else if f.isBinary}
+        <span class="bin">bin</span>
+      {/if}
+    </div>
+  {/snippet}
 
   <div class="composer">
     <input bind:value={message} placeholder="Summary (required)" disabled={!!repo.busy} />
@@ -197,7 +209,7 @@
   .lock.other { background: var(--panel); color: var(--text-muted); }
   .bin { flex-shrink: 0; font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
   .lockedhead { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; font-size: 11px; color: var(--warn-text); border-top: 1px solid var(--border); margin-top: 4px; }
-  .file.locked .rowmain { opacity: .62; padding-left: 22px; }
+  .file.locked .rowmain { opacity: .75; padding-left: 22px; }
   .empty { flex: 1; display: grid; place-items: center; }
   .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--bg-elev); }
   .composer textarea { resize: none; }
