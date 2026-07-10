@@ -171,15 +171,21 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
     let remote_available = rev.and_then(|d| d.get("remoteAvailable")).map(json_truthy).unwrap_or(true);
     let remote_authorized = rev.and_then(|d| d.get("remoteAuthorized")).map(json_truthy).unwrap_or(true);
 
-    let files = events_with_tag(events, "repositoryStatusFile").into_iter().map(|d| {
-        let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        ChangedFileDto {
-            is_binary: is_binary(repo_root, &path),
-            action: d.get("action").map(map_action).unwrap_or_else(|| "modify".into()),
-            size: d.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
-            path,
-        }
-    }).collect();
+    let files = events_with_tag(events, "repositoryStatusFile")
+        .into_iter()
+        // Directory entries ("type": "directory") are containers, not changes
+        // the UI can preview/stage individually — only real files are listed.
+        .filter(|d| d.get("type").and_then(|v| v.as_str()) != Some("directory"))
+        .map(|d| {
+            let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            ChangedFileDto {
+                is_binary: is_binary(repo_root, &path),
+                action: d.get("action").map(map_action).unwrap_or_else(|| "modify".into()),
+                size: d.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+                path,
+            }
+        })
+        .collect();
 
     StatusResultDto { branch, local_ahead, remote_ahead, revision_number, remote_available, remote_authorized, files }
 }
@@ -1234,6 +1240,7 @@ pub struct MergeConflictDto {
 fn merge_conflicts_from(events: &[LoreEvent], repo_root: &std::path::Path) -> Vec<MergeConflictDto> {
     events_with_tag(events, "repositoryStatusFile")
         .into_iter()
+        .filter(|d| d.get("type").and_then(|v| v.as_str()) != Some("directory"))
         .filter(|d| d.get("flagConflict").map(json_truthy).unwrap_or(false))
         .map(|d| {
             let path = d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -1512,6 +1519,22 @@ mod status_tests {
         let status = status_from(&events, std::path::Path::new(""));
         assert!(!status.branch.is_empty());
         // Files may be empty for a clean clone; the parse must still succeed with a branch.
+    }
+
+    #[test]
+    fn directory_entries_are_dropped() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":0,"isRemoteAhead":0}}"#, "\n",
+            r#"{"tagName":"repositoryStatusFile","data":{"path":"Audio","size":0,"action":"add","type":"directory","flagDirty":true}}"#, "\n",
+            r#"{"tagName":"repositoryStatusFile","data":{"path":"Audio/sine.wav","size":16044,"action":"add","type":"file","flagDirty":true}}"#, "\n",
+            r#"{"tagName":"repositoryStatusFile","data":{"path":"legacy_no_type.txt","size":3,"action":"keep"}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let events = parse_events(sample).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        let paths: Vec<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+        // The directory row disappears; files (with or without a type field) stay.
+        assert_eq!(paths, ["Audio/sine.wav", "legacy_no_type.txt"]);
     }
 
     #[test]
