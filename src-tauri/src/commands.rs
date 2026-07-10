@@ -1181,9 +1181,11 @@ fn file_sizes_from(events: &[LoreEvent]) -> std::collections::HashMap<String, u6
 }
 
 /// Match each requested repo-relative path against the reported sizes: exact
-/// key first, else a suffix match (defensive: some CLI builds may echo back
-/// the absolute paths they were given). Unmatched paths are simply absent —
-/// never a fake 0.
+/// key first, else a suffix match — but ONLY when exactly one reported key
+/// ends with `/{path}` (defensive: some CLI builds may echo back the
+/// absolute paths they were given). Two or more candidates is ambiguous, so
+/// it's treated the same as zero: absent. Unmatched paths are simply absent
+/// from the result — never a fake 0.
 fn relative_sizes(
     reported: &std::collections::HashMap<String, u64>,
     paths: &[String],
@@ -1193,7 +1195,11 @@ fn relative_sizes(
         let norm = rel.replace('\\', "/");
         let found = reported.get(&norm).copied().or_else(|| {
             let suffix = format!("/{norm}");
-            reported.iter().find(|(k, _)| k.ends_with(&suffix)).map(|(_, v)| *v)
+            let mut it = reported.iter().filter(|(k, _)| k.ends_with(&suffix));
+            match (it.next(), it.next()) {
+                (Some((_, v)), None) => Some(*v),
+                _ => None,
+            }
         });
         if let Some(size) = found {
             out.insert(rel.clone(), size);
@@ -1202,10 +1208,47 @@ fn relative_sizes(
     out
 }
 
-/// Repository-revision ("old") sizes of the given files, in ONE batch
-/// `lore file info` call. Paths are passed absolute (`lore file` resolves
-/// relative paths against the process cwd — same gotcha as lock/diff/reset).
-/// Pure enrichment: the frontend calls it fire-and-forget after status.
+/// Split `items` (paired with a length-bearing key, e.g. an absolute path)
+/// into consecutive chunks whose cumulative key length stays under `budget`.
+/// Every chunk has at least one item — a single item longer than `budget`
+/// still gets its own chunk rather than being dropped. Order is preserved
+/// and nothing is lost across chunks.
+fn chunk_by_arg_len<'a>(items: &'a [(String, String)], budget: usize) -> Vec<&'a [(String, String)]> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    let mut acc = 0usize;
+    for (i, (key, _)) in items.iter().enumerate() {
+        let len = key.len();
+        if i > start && acc + len > budget {
+            chunks.push(&items[start..i]);
+            start = i;
+            acc = 0;
+        }
+        acc += len;
+    }
+    if start < items.len() {
+        chunks.push(&items[start..]);
+    }
+    chunks
+}
+
+/// Cumulative absolute-path-length budget per `lore file info` batch call.
+/// Windows caps a single command line around 32 767 chars; this stays well
+/// under that even with the extra flags/spacing overhead.
+const FILE_SIZES_ARG_BUDGET: usize = 25_000;
+
+/// Repository-revision ("old") sizes of the given files, via `lore file info`
+/// batched into chunks under [`FILE_SIZES_ARG_BUDGET`] cumulative chars of
+/// absolute path (Windows caps a single command line around 32 767 chars, and
+/// `lore file` resolves relative paths against the process cwd, so paths are
+/// passed absolute — same gotcha as lock/diff/reset).
+///
+/// Callers are expected to pass only modify/delete paths from a diff. Pure
+/// enrichment (the frontend calls it fire-and-forget after status): a chunk
+/// whose `lore file info` call fails is simply skipped, degrading only the
+/// files in that chunk. This command therefore always returns `Ok`,
+/// accumulating whatever chunks succeeded — an empty map if every chunk
+/// failed — and never `Err`.
 #[tauri::command]
 pub async fn lore_file_sizes(
     repo_path: String,
@@ -1215,15 +1258,24 @@ pub async fn lore_file_sizes(
         return Ok(std::collections::HashMap::new());
     }
     blocking(move || {
-        let abs: Vec<String> = paths
+        let abs_and_rel: Vec<(String, String)> = paths
             .iter()
-            .map(|p| std::path::Path::new(&repo_path).join(p).to_string_lossy().into_owned())
+            .map(|p| {
+                let abs = std::path::Path::new(&repo_path).join(p).to_string_lossy().into_owned();
+                (abs, p.clone())
+            })
             .collect();
-        let mut args: Vec<&str> = vec!["file", "info"];
-        args.extend(abs.iter().map(|s| s.as_str()));
-        args.extend(["--repository", &repo_path]);
-        let events = run_lore(&args)?;
-        Ok(relative_sizes(&file_sizes_from(&events), &paths))
+        let mut out = std::collections::HashMap::new();
+        for chunk in chunk_by_arg_len(&abs_and_rel, FILE_SIZES_ARG_BUDGET) {
+            let mut args: Vec<&str> = vec!["file", "info"];
+            args.extend(chunk.iter().map(|(abs, _)| abs.as_str()));
+            args.extend(["--repository", &repo_path]);
+            if let Ok(events) = run_lore(&args) {
+                let chunk_paths: Vec<String> = chunk.iter().map(|(_, rel)| rel.clone()).collect();
+                out.extend(relative_sizes(&file_sizes_from(&events), &chunk_paths));
+            }
+        }
+        Ok(out)
     })
     .await
 }
@@ -1245,6 +1297,15 @@ mod file_sizes_tests {
     const SAMPLE: &str = concat!(
         r#"{"tagName":"fileInfo","data":{"path":"C:/Users/jimmy/lore-test-repo/notes.txt","size":420}}"#, "\n",
         r#"{"tagName":"fileInfo","data":{"path":"C:/Users/jimmy/lore-test-repo/Content/T_Cliff.uasset","size":4093640}}"#, "\n",
+        r#"{"tagName":"fileInfo","data":{"path":"C:/Users/jimmy/lore-test-repo/Content/T_Cliff2.uasset","size":123}}"#, "\n",
+        r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+    );
+
+    // Two different repos reporting the same leaf name → suffix match is
+    // ambiguous and must be dropped, not guessed.
+    const AMBIGUOUS: &str = concat!(
+        r#"{"tagName":"fileInfo","data":{"path":"C:/repo/a/notes.txt","size":1}}"#, "\n",
+        r#"{"tagName":"fileInfo","data":{"path":"C:/repo/b/notes.txt","size":2}}"#, "\n",
         r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
     );
 
@@ -1254,12 +1315,71 @@ mod file_sizes_tests {
         let reported = file_sizes_from(&events);
         let out = relative_sizes(
             &reported,
-            &["notes.txt".to_string(), "Content/T_Cliff.uasset".to_string(), "gone.txt".to_string()],
+            &[
+                "notes.txt".to_string(),
+                "Content/T_Cliff.uasset".to_string(),
+                "gone.txt".to_string(),
+                r"Content\T_Cliff2.uasset".to_string(),
+            ],
         );
         assert_eq!(out.get("notes.txt"), Some(&420));
         assert_eq!(out.get("Content/T_Cliff.uasset"), Some(&4093640));
         // Unreported file → absent from the map, never a fake 0.
         assert!(!out.contains_key("gone.txt"));
+        // Windows-style backslash request matches the `/`-reported path, and
+        // the output key keeps the original backslash form (it's keyed by
+        // what the caller asked for, not the normalized form).
+        assert_eq!(out.get(r"Content\T_Cliff2.uasset"), Some(&123));
+    }
+
+    #[test]
+    fn ambiguous_suffix_match_is_dropped() {
+        let events = parse_events(AMBIGUOUS).unwrap();
+        let reported = file_sizes_from(&events);
+        let out = relative_sizes(&reported, &["notes.txt".to_string()]);
+        // Two reported paths end with "/notes.txt" — can't tell which one the
+        // caller meant, so it's absent rather than a guess.
+        assert!(!out.contains_key("notes.txt"));
+    }
+
+    #[test]
+    fn chunk_fits_in_one_chunk_under_budget() {
+        let items: Vec<(String, String)> = vec![
+            ("C:/repo/a.txt".to_string(), "a.txt".to_string()),
+            ("C:/repo/b.txt".to_string(), "b.txt".to_string()),
+        ];
+        let chunks = chunk_by_arg_len(&items, 1000);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 2);
+    }
+
+    #[test]
+    fn chunk_splits_when_over_budget() {
+        let items: Vec<(String, String)> = vec![
+            ("a".repeat(10), "r1".to_string()),
+            ("b".repeat(10), "r2".to_string()),
+            ("c".repeat(10), "r3".to_string()),
+        ];
+        let chunks = chunk_by_arg_len(&items, 15);
+        assert!(chunks.len() >= 2, "expected 2+ chunks, got {}", chunks.len());
+        // Every item is preserved across the chunks, none dropped.
+        let total: usize = chunks.iter().map(|c| c.len()).sum();
+        assert_eq!(total, items.len());
+    }
+
+    #[test]
+    fn chunk_oversized_item_gets_its_own_chunk() {
+        let items: Vec<(String, String)> = vec![
+            ("short".to_string(), "r1".to_string()),
+            ("x".repeat(50), "r2".to_string()),
+            ("short2".to_string(), "r3".to_string()),
+        ];
+        let chunks = chunk_by_arg_len(&items, 10);
+        // The oversized item never gets dropped for exceeding the budget —
+        // it becomes a singleton chunk of its own.
+        assert!(chunks.iter().any(|c| c.len() == 1 && c[0].0.len() == 50));
+        let total: usize = chunks.iter().map(|c| c.len()).sum();
+        assert_eq!(total, items.len());
     }
 }
 
