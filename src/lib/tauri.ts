@@ -11,6 +11,7 @@ export const tauriApi: LoreApi = {
     invoke<void>('lore_sign_in', { serverUrl, authUrl: authUrlOverride ?? null }),
   listRepos: (serverUrl) => invoke<RepoEntry[]>('lore_repositories', { serverUrl }),
   getStatus: (repoPath) => invoke<StatusResult>('lore_status', { repoPath }),
+  fileSizes: (repoPath, paths) => invoke<Record<string, number>>('lore_file_sizes', { repoPath, paths }),
   getDiff: (repoPath, path) => invoke<DiffLine[]>('lore_diff', { repoPath, path }),
   getHistory: (repoPath, length, cursor) =>
     invoke<HistoryPage>('lore_history', { repoPath, length, cursor: cursor ?? null }),

@@ -91,17 +91,30 @@ const BIG_HISTORY: Commit[] = buildBigHistory(5000)
 // Per-repo mutable change set, keyed by working-dir path. Defaults for any path.
 function seedFiles(): ChangedFile[] {
   return [
-    { path: 'Content/Maps/Level_01.umap', action: 'modify', isBinary: true, size: 2359296, oldSize: 2100480, lockedBy: 'you' },
+    { path: 'Content/Maps/Level_01.umap', action: 'modify', isBinary: true, size: 2359296, lockedBy: 'you' },
     { path: 'Content/Characters/Hero/SK_Hero.uasset', action: 'add', isBinary: true, size: 4718592 },
-    { path: 'Content/Environment/T_Cliff_D.uasset', action: 'modify', isBinary: true, size: 4404019, oldSize: 4093640, lockedBy: 'Maya R' },
-    { path: 'Content/UI/T_Icon_Sword.png', action: 'modify', isBinary: true, size: 182044, oldSize: 175200 },
+    { path: 'Content/Environment/T_Cliff_D.uasset', action: 'modify', isBinary: true, size: 4404019, lockedBy: 'Maya R' },
+    { path: 'Content/UI/T_Icon_Sword.png', action: 'modify', isBinary: true, size: 182044 },
     { path: 'Audio/sfx_hit.wav', action: 'add', isBinary: true, size: 912384 },
     { path: 'Content/Props/SM_Crate.obj', action: 'add', isBinary: true, size: 20480 },
-    { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241, oldSize: 7980 },
-    { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204, oldSize: 1180 },
-    { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512, oldSize: 500 },
-    { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0, oldSize: 3400 },
+    { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify', isBinary: false, size: 8241 },
+    { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204 },
+    { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512 },
+    { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0 },
   ]
+}
+
+// "Old" (repository-revision) sizes served by fileSizes, so the browser dev
+// exercises the same fire-and-forget enrichment as the real app (deltas pop
+// in ~400 ms after the status). T_Icon_Sword old == new → no delta shown.
+const MOCK_OLD_SIZES: Record<string, number> = {
+  'Content/Maps/Level_01.umap': 2100480,
+  'Content/Environment/T_Cliff_D.uasset': 4093640,
+  'Content/UI/T_Icon_Sword.png': 182044,
+  'Source/Player/PlayerCharacter.cpp': 7980,
+  'Source/Player/PlayerCharacter.h': 1180,
+  'Config/DefaultInput.ini': 500,
+  'Docs/old-notes.md': 3400,
 }
 
 function buildBranches(extra: number): Branch[] {
@@ -216,6 +229,12 @@ export const mock: LoreApi = {
       revisionNumber: 5, remoteAvailable: true, remoteAuthorized: true,
       files: [...s.files],
     } as StatusResult
+  },
+  async fileSizes(_repoPath: string, paths: string[]) {
+    await delay(400)
+    const out: Record<string, number> = {}
+    for (const p of paths) if (MOCK_OLD_SIZES[p] != null) out[p] = MOCK_OLD_SIZES[p]
+    return out
   },
   async getDiff(_repoPath: string, _path: string) {
     await delay(120)

@@ -142,6 +142,8 @@ export interface LoreApi {
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string): Promise<string>
   getStatus(repoPath: string): Promise<StatusResult>
+  /** Repository-revision sizes of the given files (ONE batch `file info` call) — the "old" side of the size delta. */
+  fileSizes(repoPath: string, paths: string[]): Promise<Record<string, number>>
   getDiff(repoPath: string, path: string): Promise<DiffLine[]>
   /** Commit the working changes except `exclude` (unchecked files stay pending). */
   commitAll(repoPath: string, message: string, exclude: string[]): Promise<void>
