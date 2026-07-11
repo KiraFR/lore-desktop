@@ -1,0 +1,58 @@
+# Build Windows installers (NSIS/MSI) and publish them to a draft GitHub
+# Release whenever a `v*` tag is pushed (or manually via workflow_dispatch).
+#
+# Runs on windows-latest since Lore Desktop is Windows-first and
+# windows-latest runners already have WebView2 preinstalled.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write # required so tauri-action can create/update the GitHub Release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install node dependencies
+        run: npm ci
+
+      - name: Build Tauri app and publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- Optional: Tauri updater signing ---------------------------
+          # Uncomment and add these secrets to enable signed update
+          # artifacts consumed by the Tauri updater plugin.
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # --- Optional: Windows Authenticode code signing ----------------
+          # Uncomment and add these secrets to sign the .exe/.msi installers
+          # with a Windows code-signing certificate. Without this, the
+          # installers are unsigned and will trigger a Windows SmartScreen
+          # "unrecognized app" warning until enough users install it (or a
+          # cert is configured).
+          # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Lore Desktop ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
