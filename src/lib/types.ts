@@ -94,6 +94,8 @@ export interface Commit {
 export interface Branch {
   name: string
   current: boolean
+  /** 'remote' = existe seulement côté serveur (le switch reste permis — le CLI fait le checkout). Absent → local. */
+  location?: 'local' | 'remote'
 }
 
 export interface MergeConflict {
