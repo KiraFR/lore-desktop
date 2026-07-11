@@ -1,5 +1,13 @@
 # Lore Desktop — Lot P5 « recherche & navigation » Implementation Plan
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-11** (subagent-driven 8/8, double revue par tâche, revue finale : READY).
+>
+> **Suites** : vitest **156 passed / 22 fichiers**, 0 failed ; `npm run check` **0 errors, 0 warnings** (888 fichiers). RED confirmé avant impl pour les 3 tâches TDD (`filterByText`, `filterCommits`, `selectionAfterFilter`).
+>
+> **Parcours navigateur mock validé** : (1) **Locks** — « maya » → « 1 of 3 » (détenteur, `T_Cliff_D.uasset`), « hero » → « 1 of 3 » (chemin, `SK_Hero.uasset`), « zzz » → « No locks match. » (0 ligne), clear → « 3 held » ; (2) **History « loot »** → « 4 of 200 loaded commits », hint verbatim « Searching loaded commits only — scroll History to load more », liste **plate** (aucun `svg.graph`, aucun headpill, `padding-left:14px`) ; (3) **« #49 »** → « 100 of 200 » (revs 4900-4999, préfixe exact) ; (4) **sélection** — clic sur un match le sélectionne (`.grow.sel`, détail affiché), requête l'excluant (« lighting ») → sélection réinitialisée (« Select a commit. ») ; (5) **Escape** dans le champ → vide le filtre, graphe + lanes de retour, compteur « 200 commits » ; (6) **Load more** sous filtre (« recoil ») → clic fait passer M de 200 à 400 (« 6 of 400 loaded commits »), nouveaux matches entrés sans toucher au champ ; scroll infini toujours désactivé sous filtre. Console sans erreur.
+>
+> **Aucune capture** (frontend pur, pas de Rust). **Déviations** : aucune vs le code du plan — les snippets OLD correspondaient verbatim, seuls les numéros de ligne avaient dérivé (adaptés par contenu). Garde du listener window Escape (protection du preview panel : ignore Escape si la cible est un `HTMLInputElement`) laissée **intacte**. Nitpicks non bloquants (revue) : inputs filtre placeholder-only sans `aria-label` (cohérent avec le filtre Changes existant), `filtered` calculé même filtre inactif (court-circuité sur même référence).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Livrer les 2 items du lot P5 (spec `docs/superpowers/specs/2026-07-11-lore-desktop-p5-search-design.md`) : un filtre dans la vue Locks (chemin + détenteur, compteur « N of M »), puis une recherche CLIENT dans History (filtrage des commits déjà chargés sur message/auteur/hash/#rev, liste plate sans lanes, hint « loaded commits only », bouton Load more accessible sous filtre, survie/reset de la sélection, Escape qui vide le champ).
