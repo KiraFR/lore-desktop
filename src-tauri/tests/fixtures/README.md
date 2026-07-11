@@ -316,3 +316,48 @@ dates fantaisistes (1970 ou horizon lointain selon le sens de l'erreur).
 `latest`/`created` potentiellement différents — c'est `id` (pas `name`) qui
 doit servir de clé de dédup/jointure entre les deux blocs pour la Task 6 (le
 plan supposait une dédup par nom).
+
+## `branch info <name> --json` (P4 Item 4/Task 9 — double constat protected + ahead/behind)
+
+Capturé le 2026-07-11 sur `lore-test-repo`, branche `feature/test` (courante,
+un commit local non poussé — même repo que `branch_list.ndjson`). Fixture :
+`branch_info.ndjson`. La commande **existe** (pas de repli « unknown command »
+nécessaire) sous le nom `branch info <name>`, tag `branchInfo` — un seul
+événement de données par appel (pas de begin/end/entry comme `branch list`),
+suivi de `complete`.
+
+**Champs réels de `branchInfo`** : `id` (uuid, même id que dans
+`branch_list.ndjson`), `name`, `category` (vide ici, comme dans `branch
+list`), `latest` (hash tip local), `latestRemote` (hash tip remote — **pas**
+un compteur, juste le hash ; absent de l'hypothèse du plan), `parent` (id de
+branche parente), `branchPoint` (hash de révision au point de fork),
+`creator` (uuid, résolvable via `authUserInfo` comme `branch list`),
+`created` (epoch **millisecondes** — même résolution que `location:"local"`
+dans `branch list`, cohérent), `stack` (même structure `{"branch":<id>,
+"revision":<hash>}` que dans `branch list`), `archived` (bool).
+
+**CONSTAT (A) protected — RECONFIRMÉ ABSENT.** `Select-String -Pattern
+protect` sur `branch_info.ndjson` : zéro occurrence. Combiné au constat déjà
+négatif de `branch_list.ndjson` (Task 5), **aucune** commande `lore` n'expose
+de flag protected en lecture. Item 4 (badge protected) : **ANNULÉ** — Tasks
+10-11 non exécutées (cocher avec la mention « annulé — constat négatif
+Task 9 »), un badge protected dans l'UI ne peut venir que d'une convention
+côté app (ex. nom `main`/`master` en dur), pas d'un champ CLI.
+
+**CONSTAT (B) ahead/behind — ABSENT.** `Select-String -Pattern
+"ahead|behind|revisionLocal|revisionRemote"` sur `branch_info.ndjson` : zéro
+occurrence. Aucun compteur numérique d'avance/retard par branche (pas de
+`ahead`/`behind`, pas de `revisionLocalNumber`/`revisionRemoteNumber`, pas de
+flags `isLocalAhead`/`isRemoteAhead` équivalents). Les seuls champs relatifs
+au remote sont `latest`/`latestRemote`, deux **hashes** de révision (pas des
+nombres) — on peut au mieux en déduire une égalité/inégalité booléenne
+(`latest == latestRemote` ⇒ branche synchronisée), jamais une magnitude
+d'avance/retard, et ce uniquement pour la branche interrogée (pas de version
+batch de `branch info` sur toutes les branches). Item 3 (ahead/behind lazy
+par branche dans le menu) : **VARIANTE B** — pas de fetch lazy réel par
+branche ; repli sur la branche **courante uniquement**, dont l'ahead/behind
+exact (`revisionLocalNumber`/`revisionRemoteNumber` + `isLocalAhead`/
+`isRemoteAhead`) est déjà disponible sans appel supplémentaire via
+`repositoryStatusRevision` (`status --json`, cf. section plus haut) — Tasks
+12 et 14 annulées, Task 13 réduite à `formatAheadBehind`, Task 15 affiche
+l'ahead/behind de la seule branche courante dans l'en-tête du menu.
