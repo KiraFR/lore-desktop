@@ -26,6 +26,16 @@ pub(crate) fn is_model_ext(ext: &str) -> bool {
     MODEL_EXTS.contains(&ext)
 }
 
+/// A conflicted merge materializes the incoming version of each conflicted
+/// file as `<name>~theirs` next to the original (naming pinned by the P2
+/// item-2 real-merge verification). Classify those sidecars as their base
+/// type; the file on disk is read as-is. Mirrored in previewKind.ts.
+const THEIRS_SUFFIX: &str = "~theirs";
+
+pub(crate) fn preview_ext(path: &str) -> String {
+    ext_of(path.strip_suffix(THEIRS_SUFFIX).unwrap_or(path))
+}
+
 fn none() -> PreviewDto {
     PreviewDto { kind: "none".into(), data_url: None, width: None, height: None }
 }
@@ -108,7 +118,17 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "uasset" | "umap" => decode_uasset(path),
         "sbsar" => decode_sbsar(path),
         "spp" => decode_spp(path),
-        _ => image::open(path).map(|d| d.to_rgba8()).map_err(|e| e.to_string()),
+        // Format is picked from the classified `ext`, not sniffed from the
+        // on-disk file extension — a `~theirs` sidecar's real filename
+        // (e.g. `tex.png~theirs`) isn't a format `image` recognizes.
+        _ => {
+            let mut reader = image::ImageReader::open(path).map_err(|e| e.to_string())?;
+            match image::ImageFormat::from_extension(ext) {
+                Some(f) => reader.set_format(f),
+                None => reader = reader.with_guessed_format().map_err(|e| e.to_string())?,
+            }
+            reader.decode().map(|d| d.to_rgba8()).map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -574,7 +594,7 @@ pub async fn lore_preview(
     max_px: u32,
 ) -> Result<PreviewDto, String> {
     blocking(move || {
-        let ext = ext_of(&path);
+        let ext = preview_ext(&path);
         let abs = Path::new(&repo_path).join(&path);
         if AUDIO_EXTS.contains(&ext.as_str()) {
             if !abs.is_file() {
@@ -979,5 +999,25 @@ mod tests {
         assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 2); // png + json
         let b = image_preview(&p, "png", 128, Some(cache));
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn theirs_sidecar_uses_base_extension() {
+        assert_eq!(preview_ext("Content/T_Rock.png~theirs"), "png");
+        assert_eq!(preview_ext("Content/T_Rock.png"), "png");
+        assert_eq!(preview_ext("noext~theirs"), "");
+    }
+
+    #[test]
+    fn theirs_sidecar_image_decodes() {
+        let d = dir("theirs");
+        // A real PNG saved under the sidecar name — exactly what a conflicted
+        // merge leaves on disk next to the original.
+        let p = d.join("tex.png~theirs");
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255])))
+            .save_with_format(&p, image::ImageFormat::Png)
+            .unwrap();
+        let out = image_preview(&p, &preview_ext("tex.png~theirs"), 64, None);
+        assert_eq!(out.kind, "image");
     }
 }
