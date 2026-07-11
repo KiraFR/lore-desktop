@@ -2,7 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, StatusResult } from './types'
 
 type WireProgress = { opId: string; kind: string; done: number; total?: number; unit?: 'bytes' | 'files' }
 
@@ -39,6 +39,7 @@ export const tauriApi: LoreApi = {
   signIn: (serverUrl, authUrlOverride) =>
     invoke<void>('lore_sign_in', { serverUrl, authUrl: authUrlOverride ?? null }),
   listRepos: (serverUrl) => invoke<RepoEntry[]>('lore_repositories', { serverUrl }),
+  getRepositoryInfo: (repoPath) => invoke<RepositoryInfo>('lore_repository_info', { repoPath }),
   getStatus: (repoPath) => invoke<StatusResult>('lore_status', { repoPath }),
   fileSizes: (repoPath, paths) => invoke<Record<string, number>>('lore_file_sizes', { repoPath, paths }),
   getDiff: (repoPath, path) => invoke<DiffLine[]>('lore_diff', { repoPath, path }),

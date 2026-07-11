@@ -1,5 +1,5 @@
 import { isPreviewableImage, stripTheirsSuffix } from './previewKind'
-import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, StatusResult } from './types'
+import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
 export function mockWavDataUrl(): string {
@@ -174,6 +174,17 @@ export const mock: LoreApi = {
   async listRepos(_serverUrl: string) {
     await delay()
     return FAKE_REPOS
+  },
+  async getRepositoryInfo(_repoPath: string) {
+    await delay(180)
+    return {
+      id: '019f333af5e073d28bb117ad1596784a',
+      name: 'game-main',
+      remoteUrl: 'lore://lore.example.com:41337',
+      description: 'Main game repository',
+      defaultBranchName: 'main',
+      created: 1783270930,
+    } as RepositoryInfo
   },
   async pickFolder() {
     await delay(120)

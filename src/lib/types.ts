@@ -73,6 +73,17 @@ export interface RepoEntry {
   name: string
 }
 
+/** Fields of `lore repository info` — all optional: an absent field hides its row. */
+export interface RepositoryInfo {
+  id?: string
+  name?: string
+  remoteUrl?: string
+  description?: string
+  defaultBranchName?: string
+  /** Repo creation time, epoch SECONDS (multiply by 1000 for a JS Date). */
+  created?: number
+}
+
 export interface CommitFile {
   path: string
   action: 'add' | 'modify' | 'delete' | 'move' | 'copy'
@@ -152,6 +163,8 @@ export interface LoreApi {
   signIn(serverUrl: string, authUrlOverride?: string): Promise<void>
   signOut(): Promise<void>
   listRepos(serverUrl: string): Promise<RepoEntry[]>
+  /** Open repo's metadata for the About panel (best-effort: may reject offline). */
+  getRepositoryInfo(repoPath: string): Promise<RepositoryInfo>
   /** Native OS directory chooser; returns the absolute path or null if cancelled. */
   pickFolder(): Promise<string | null>
   /** Native file chooser starting inside the repo; absolute path or null if cancelled. */
