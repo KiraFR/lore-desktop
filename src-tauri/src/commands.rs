@@ -1015,15 +1015,21 @@ pub async fn lore_locks(repo_path: String) -> Result<Vec<LockEntryDto>, String> 
 pub struct BranchDto {
     pub name: String,
     pub current: bool,
+    /// "local" (existe dans la working copy) ou "remote" (remote-only après
+    /// dédup). Champ wire absent (CLI plus ancien) => "local" : défaut sûr,
+    /// pas de section Remote fantôme.
+    pub location: String,
 }
 
 /// Union of `branchListEntry` events (which stream once per location, local then
 /// remote) deduped by name. `current` folds `isCurrent` across every entry for a
-/// name (only local entries carry it); archived branches are dropped. First-seen
+/// name (only local entries carry it); a name with ANY local entry is "local",
+/// otherwise "remote" (remote-only). Archived branches are dropped. First-seen
 /// order is preserved, so local branches come first and remote-only ones append.
 fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
     let mut order: Vec<String> = Vec::new();
     let mut current: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut local: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for d in events_with_tag(events, "branchListEntry") {
         if d.get("archived").map(json_truthy).unwrap_or(false) {
@@ -1033,6 +1039,9 @@ fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
             Some(n) if !n.is_empty() => n.to_string(),
             _ => continue,
         };
+        if d.get("location").and_then(|v| v.as_str()).unwrap_or("local") == "local" {
+            local.insert(name.clone());
+        }
         if d.get("isCurrent").map(json_truthy).unwrap_or(false) {
             current.insert(name.clone());
         }
@@ -1042,7 +1051,11 @@ fn branches_from(events: &[LoreEvent]) -> Vec<BranchDto> {
     }
     order
         .into_iter()
-        .map(|name| BranchDto { current: current.contains(&name), name })
+        .map(|name| BranchDto {
+            current: current.contains(&name),
+            location: if local.contains(&name) { "local" } else { "remote" }.to_string(),
+            name,
+        })
         .collect()
 }
 
@@ -1833,8 +1846,30 @@ mod branches_tests {
         assert_eq!(branches.len(), 2);
         assert_eq!(branches[0].name, "main"); // local order first
         assert!(branches[0].current);
+        assert_eq!(branches[0].location, "local"); // present locally => local wins the dedupe
         assert_eq!(branches[1].name, "feature/x");
         assert!(!branches[1].current);
+        assert_eq!(branches[1].location, "remote"); // remote-only
+    }
+
+    #[test]
+    fn missing_location_defaults_to_local() {
+        // Older CLI without the field: no phantom Remote section.
+        let sample = concat!(
+            r#"{"tagName":"branchListEntry","data":{"name":"main","latest":"a1","isCurrent":true,"archived":false}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let branches = branches_from(&parse_events(sample).unwrap());
+        assert_eq!(branches[0].location, "local");
+    }
+
+    #[test]
+    fn parses_branch_list_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/branch_list.ndjson")).unwrap();
+        let branches = branches_from(&events);
+        assert!(!branches.is_empty(), "the captured fixture must list at least one branch");
+        assert!(branches.iter().any(|b| b.current), "one branch is current");
+        assert!(branches.iter().all(|b| b.location == "local" || b.location == "remote"));
     }
 
     #[test]
