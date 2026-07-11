@@ -38,8 +38,11 @@
     if (!parent) return
     busy = `locate:${oldPath}`
     try {
-      await api.updateRepoPath(parent)
+      // Validate identity BEFORE touching the backend registry: a moved clone's
+      // local metadata makes `status` work at the new path (constat a), so a
+      // failing status means this folder isn't the repo — don't re-point then.
       await api.getStatus(parent) // proof of life: the folder answers as a repo
+      await api.updateRepoPath(parent) // best-effort registry hygiene (clears "stale")
       await relocateRepo(oldPath, parent)
       missingRepoPaths.delete(oldPath)
       toastInfo('Repository relocated')
