@@ -98,7 +98,9 @@ export interface Branch {
   location?: 'local' | 'remote'
 }
 
-/** Champs lazy de `lore branch info` — absents quand le CLI ne les expose pas. */
+/** Ahead/behind counters fed to `formatAheadBehind`. The CLI's `branch info`
+ *  exposes no per-branch counters (verified — fixtures README), so in practice
+ *  these are the CURRENT branch's counts sourced from the status. */
 export interface BranchInfo {
   ahead?: number
   behind?: number
