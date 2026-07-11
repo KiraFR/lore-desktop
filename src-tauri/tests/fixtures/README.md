@@ -448,3 +448,16 @@ dans l'AvatarMenu**. ⚠ Conséquence pour les commandes Rust : `enable` doit pr
 server-url (create l'exige) — create le store du remote courant s'il manque, puis
 set-use-automatically true ; `disable` = set-use-automatically false (sans arg). `status`
 = exists si `exists`/`paths` non vides, path = `paths[0]`, autoUse = `useAutomatically`.
+
+**File diff between two revisions** (fixture file_diff_revs.ndjson, capturée le
+2026-07-12). `lore diff <path> --source <revSig> --target <revSig> --json` émet un
+`{"tagName":"fileDiff","data":{"path","patch","action"}}` puis `complete status 0`.
+⚠ `--source/--target` veulent une SIGNATURE de révision (hash — un NUMÉRO donne
+« revision not found »), et le chemin est résolu contre le cwd du process (passer un
+chemin ABSOLU, comme le fait déjà `lore_diff`). `action` : **`add`** (patch `--- /dev/null`
+→ `+++ path`), **`keep`** = modifié (patch `--- path@<n>` → `+++ path@<m>`), **`delete`**
+(patch `--- path@<n>` → `+++ /dev/null`). Le `patch` est un diff unifié standard (séparateur
+`\n`, avec le `\r\n` réel du fichier embarqué dans les lignes ; lignes méta `\ No newline at
+end of file` présentes). Parsé par le `parse_diff` existant (le même que `lore_diff` du
+working-tree). Sert au diff TEXTE historique dans la preview de History (parent→révision du
+commit). Le contenu BINAIRE à une révision reste hors de portée (pas de `file cat`).
