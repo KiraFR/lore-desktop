@@ -10,7 +10,7 @@
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
-  let { onclose }: { onclose: () => void } = $props()
+  let { onclose, onabout }: { onclose: () => void; onabout?: () => void } = $props()
 
   let filter = $state('')
   let addOpen = $state(false)
@@ -137,6 +137,12 @@
         </div>
       {/each}
     </div>
+    {#if session.config.currentRepo}
+      <div class="div"></div>
+      <button class="action" onclick={() => onabout?.()}>
+        <Icon name="info" size={15} /> About repository
+      </button>
+    {/if}
   {:else}
     <div class="head">
       <button class="add" onclick={() => (mode = 'list')}><Icon name="chevronLeft" size={12} /> Back</button>
@@ -199,4 +205,5 @@
   .action { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }
   .action:hover { background: var(--panel-hover); border: none; }
   .action :global(svg) { color: var(--text-muted); }
+  .div { height: 1px; background: var(--border); margin: 6px 0; }
 </style>

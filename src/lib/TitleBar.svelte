@@ -8,11 +8,13 @@
   import BranchMenu from './BranchMenu.svelte'
   import RepoSwitcher from './RepoSwitcher.svelte'
   import AvatarMenu from './AvatarMenu.svelte'
+  import AboutRepo from './AboutRepo.svelte'
 
   const repoName = $derived(session.config.currentRepo?.split(/[\\/]/).pop() || 'Select a repository')
   const noRemote = $derived(repo.status ? !repo.status.remoteAvailable || !repo.status.remoteAuthorized : false)
   const initials = $derived(initialsFor(session.config.displayName, session.identity?.email))
   let repoOpen = $state(false)
+  let aboutOpen = $state(false)
   let repoZoneEl = $state<HTMLDivElement>()
   let menuOpen = $state(false)
   let zoneEl = $state<HTMLDivElement>()
@@ -53,7 +55,7 @@
       <div class="lbl"><span class="cap">Current repository</span><span class="val">{repoName}</span></div>
       <Icon name={repoOpen ? 'chevronUp' : 'chevronDown'} size={14} />
     </button>
-    {#if repoOpen}<RepoSwitcher onclose={() => (repoOpen = false)} />{/if}
+    {#if repoOpen}<RepoSwitcher onclose={() => (repoOpen = false)} onabout={() => { repoOpen = false; aboutOpen = true }} />{/if}
   </div>
 
   {#if session.config.currentRepo}
@@ -101,6 +103,8 @@
     <button class="avatar" class:open={avatarOpen} onclick={() => (avatarOpen = !avatarOpen)} title="Account">{initials}</button>
     {#if avatarOpen}<AvatarMenu onclose={() => (avatarOpen = false)} />{/if}
   </div>
+
+  {#if aboutOpen}<AboutRepo onclose={() => (aboutOpen = false)} />{/if}
 </header>
 
 <style>
