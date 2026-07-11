@@ -10,6 +10,13 @@ export function selectionAfterCommitChange(sameCommit: boolean, current: string 
   return sameCommit ? current : null
 }
 
+/** Commit selection under an active History filter: it survives while the
+ *  commit is still in the visible (filtered) list, and resets otherwise —
+ *  same idea as selectionAfterCommitChange for the file preview. */
+export function selectionAfterFilter(selectedId: string | null, visible: { id: string }[]): string | null {
+  return selectedId !== null && visible.some((c) => c.id === selectedId) ? selectedId : null
+}
+
 /** True when `commitId` is the local tip (history is newest-first). Drives the
  *  « Preview of the current working copy » caveat: without `file cat <rev>`,
  *  any non-tip commit can only show the disk's current state. */
