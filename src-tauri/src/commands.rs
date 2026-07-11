@@ -2319,6 +2319,44 @@ pub fn os_open_path(path: String) -> Result<(), String> {
     }
 }
 
+/// Pure check behind `os_path_exists` (testable without Tauri).
+fn path_exists_impl(path: &str) -> bool {
+    std::path::Path::new(path).is_dir()
+}
+
+/// Does this directory still exist? Drives the "Missing" state of the repo list.
+#[tauri::command]
+pub fn os_path_exists(path: String) -> bool {
+    path_exists_impl(&path)
+}
+
+/// Re-register a repository after the user moved its folder on disk. The clone's
+/// local metadata already lets `status` work at the new path (verified — constat
+/// (a) of the Task 2 capture); `repository update-path` is a best-effort fix of
+/// the server-side instance registry (clears the "stale" flag), so its failure
+/// is non-fatal. The status at the new path is the real proof of life.
+#[tauri::command]
+pub async fn lore_update_path(new_path: String) -> Result<(), String> {
+    blocking(move || {
+        let _ = run_lore(&["repository", "update-path", "--repository", &new_path]);
+        run_lore(&["status", "--repository", &new_path])?;
+        Ok(())
+    })
+    .await
+}
+
+#[cfg(test)]
+mod repo_health_tests {
+    use super::*;
+
+    #[test]
+    fn path_exists_reports_real_directories() {
+        let dir = std::env::temp_dir();
+        assert!(path_exists_impl(dir.to_str().unwrap()));
+        assert!(!path_exists_impl(dir.join("p3-definitely-missing-xyz").to_str().unwrap()));
+    }
+}
+
 #[cfg(test)]
 mod reveal_arg_tests {
     use super::reveal_arg_windows;
