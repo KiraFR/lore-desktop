@@ -273,6 +273,79 @@ fn repositories_from(events: &[LoreEvent]) -> Vec<RepoEntryDto> {
         .collect()
 }
 
+#[derive(Serialize, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInfoDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_branch_name: Option<String>,
+    /// Repo creation time, epoch SECONDS as the CLI emits it (UI multiplies by 1000).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
+}
+
+/// First `repositoryData` event (tag pinned by the Task 16 capture).
+/// Absent fields stay None — the matching About row is hidden. An empty-string
+/// description is treated as absent (no blank row).
+fn repository_info_from(events: &[LoreEvent]) -> RepositoryInfoDto {
+    let d = events_with_tag(events, "repositoryData").into_iter().next();
+    let s = |d: Option<&serde_json::Value>, k: &str| {
+        d.and_then(|d| d.get(k))
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(String::from)
+    };
+    RepositoryInfoDto {
+        id: s(d, "id"),
+        name: s(d, "name"),
+        remote_url: s(d, "remoteUrl"),
+        description: s(d, "description"),
+        default_branch_name: s(d, "defaultBranchName"),
+        created: d.and_then(|d| d.get("created").and_then(|v| v.as_u64())),
+    }
+}
+
+/// Repository metadata for the read-only "About repository" panel.
+#[tauri::command]
+pub async fn lore_repository_info(repo_path: String) -> Result<RepositoryInfoDto, String> {
+    blocking(move || {
+        let events = run_lore(&["repository", "info", "--repository", &repo_path])?;
+        Ok(repository_info_from(&events))
+    })
+    .await
+}
+
+#[cfg(test)]
+mod repository_info_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    #[test]
+    fn parses_repository_data_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/repo_info.ndjson")).unwrap();
+        let info = repository_info_from(&events);
+        assert_eq!(info.id.as_deref(), Some("019f333af5e073d28bb117ad1596784a"));
+        assert_eq!(info.name.as_deref(), Some("desktoptest1"));
+        assert_eq!(info.default_branch_name.as_deref(), Some("main"));
+        assert_eq!(info.created, Some(1783270930));
+        // Empty-string description is normalized to None (no blank row).
+        assert_eq!(info.description, None);
+    }
+
+    #[test]
+    fn empty_stream_yields_all_none() {
+        let events = parse_events(r#"{"tagName":"complete","data":{"status":0}}"#).unwrap();
+        assert_eq!(repository_info_from(&events), RepositoryInfoDto::default());
+    }
+}
+
 #[tauri::command]
 pub async fn lore_repositories(server_url: String) -> Result<Vec<RepoEntryDto>, String> {
     blocking(move || {

@@ -32,6 +32,7 @@ pub fn run() {
         commands::lore_status,
         commands::lore_history,
         commands::lore_repositories,
+        commands::lore_repository_info,
         commands::lore_clone,
         config::config_load,
         config::config_save,
