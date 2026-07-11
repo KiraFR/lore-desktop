@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { repo, history, refreshHistory, loadMoreHistory, undoCommit } from './repo.svelte'
+  import { repo, history, refreshHistory, loadMoreHistory, undoCommit, syncToRevision } from './repo.svelte'
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { initialsFor } from './identity'
   import { confirmAction } from './confirm'
@@ -97,6 +97,19 @@
     !!selected && selected.id === history.commits[0]?.id &&
     (repo.status?.localAhead ?? 0) > 0,
   )
+
+  // Any older revision can become the working copy. Only offered off the tip and
+  // with a clean tree (a sync onto a dirty tree would clobber pending changes).
+  const isSelectedTip = $derived(!!selected && isLocalTip(selected.id, commits))
+  const dirtyTree = $derived((repo.status?.files.length ?? 0) > 0)
+  async function syncTo() {
+    if (!selected || isSelectedTip || dirtyTree || repo.busy) return
+    const ok = await confirmAction(
+      `Your working copy will match revision #${selected.rev}. You'll be behind the latest — sync back when you're done.`,
+      'Sync to revision',
+    )
+    if (ok) syncToRevision(selected.id)
+  }
 
   let editing = $state(false)
   let editMsg = $state('')
@@ -269,6 +282,12 @@
         {#if canUndo}
           <button class="undo" onclick={doUndo} disabled={!!repo.busy} title="Undo this commit — its changes go back to Changes">
             <Icon name="history" size={13} /> Undo commit
+          </button>
+        {/if}
+        {#if selected && !isSelectedTip}
+          <button class="undo" onclick={syncTo} disabled={!!repo.busy || dirtyTree}
+                  title={dirtyTree ? 'Commit or discard your local changes first' : 'Sync the working copy to this revision'}>
+            <Icon name="sync" size={13} /> Sync to this revision…
           </button>
         {/if}
       </header>

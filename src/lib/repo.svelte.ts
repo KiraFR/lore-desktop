@@ -154,6 +154,11 @@ export const sync = () => act('sync', async (p) => {
   finally { opProgress.sync = null }
 })
 
+export const syncToRevision = (revision: string) => act('sync', async (p) => {
+  try { await api.syncToRevision(p, revision, (prog) => { opProgress.sync = prog }) }
+  finally { opProgress.sync = null }
+})
+
 // Push, then offer to release the locks the user held on files that were part of
 // this push (the lock-workflow's "done editing" step). The candidate set must be
 // computed BEFORE the push, while the remote and local tips still differ.
