@@ -179,14 +179,19 @@
   const idxMap = $derived(new Map(commits.map((c, i) => [c.id, i])))
   const maxLane = $derived(commits.reduce((m, c) => Math.max(m, c.lane), 0))
   const graphWidth = $derived(laneX(maxLane) + 16)
-  const total = $derived(commits.length * ROW_H)
+  // Under an active filter the list is FLAT (no graph): same virtual window,
+  // but over the filtered rows and without the lanes SVG — edges are
+  // meaningless on a filtered list.
+  const rows = $derived(filterActive ? filtered : commits)
+  const total = $derived(rows.length * ROW_H)
   const first = $derived(Math.max(0, Math.floor(scrollTop / ROW_H) - BUFFER))
-  const last = $derived(Math.min(commits.length, Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER))
-  const windowCommits = $derived(commits.slice(first, last))
+  const last = $derived(Math.min(rows.length, Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER))
+  const windowCommits = $derived(rows.slice(first, last))
 
   const win = $derived.by(() => {
     const edges: { d: string; col: string; dashed: boolean }[] = []
     const dots: { x: number; y: number; color: string; merge: boolean }[] = []
+    if (filterActive) return { edges, dots } // flat mode — no lanes
     for (let i = first; i < last; i++) {
       const c = commits[i]
       if (!c) continue
@@ -228,8 +233,18 @@
   function onScroll() {
     if (!glistEl) return
     scrollTop = glistEl.scrollTop
-    if (glistEl.scrollTop + glistEl.clientHeight > commits.length * ROW_H - viewH * 2) loadMoreHistory()
+    // Infinite scroll only without a filter: a short match list would otherwise
+    // sit at the bottom and fetch page after page. Filtered mode loads via the
+    // explicit « Load more » button instead.
+    if (!filterActive && glistEl.scrollTop + glistEl.clientHeight > rows.length * ROW_H - viewH * 2) loadMoreHistory()
   }
+
+  // A query change re-anchors the list at the top — the previous scroll offset
+  // is meaningless against a different row set (also applies when clearing).
+  $effect(() => {
+    query
+    if (glistEl) { glistEl.scrollTop = 0; scrollTop = 0 }
+  })
 
   let ctxMenu = $state<{ x: number; y: number; path: string } | null>(null)
 
@@ -257,26 +272,30 @@
     <div class="glist" bind:this={glistEl} onscroll={onScroll}>
       {#if loading && !commits.length}
         <p class="muted pad">Loading history…</p>
+      {:else if filterActive && filtered.length === 0}
+        <p class="muted pad">No commits match.</p>
       {:else}
         <div class="viewport" style="height:{total}px">
-          <svg class="graph" style="top:{first * ROW_H}px" width={graphWidth} height={(last - first) * ROW_H} fill="none">
-            {#each win.edges as e}<path d={e.d} stroke={e.col} stroke-width="2" stroke-dasharray={e.dashed ? '4 3' : undefined} />{/each}
-            {#each win.dots as dt}
-              {#if dt.merge}
-                <circle cx={dt.x} cy={dt.y} r="6" fill="var(--bg)" stroke={dt.color} stroke-width="2" />
-              {:else}
-                <circle cx={dt.x} cy={dt.y} r="4.5" fill={dt.color} />
-              {/if}
-            {/each}
-          </svg>
+          {#if !filterActive}
+            <svg class="graph" style="top:{first * ROW_H}px" width={graphWidth} height={(last - first) * ROW_H} fill="none">
+              {#each win.edges as e}<path d={e.d} stroke={e.col} stroke-width="2" stroke-dasharray={e.dashed ? '4 3' : undefined} />{/each}
+              {#each win.dots as dt}
+                {#if dt.merge}
+                  <circle cx={dt.x} cy={dt.y} r="6" fill="var(--bg)" stroke={dt.color} stroke-width="2" />
+                {:else}
+                  <circle cx={dt.x} cy={dt.y} r="4.5" fill={dt.color} />
+                {/if}
+              {/each}
+            </svg>
+          {/if}
           {#each windowCommits as c, k (c.id)}
             {@const i = first + k}
             {@const av = avatar(c.author)}
             <div class="grow" class:sel={c.id === history.selectedId} role="button" tabindex="0"
-                 style="top:{i * ROW_H}px; height:{ROW_H}px; padding-left:{graphWidth + 10}px"
+                 style="top:{i * ROW_H}px; height:{ROW_H}px; padding-left:{filterActive ? 14 : graphWidth + 10}px"
                  onclick={() => (history.selectedId = c.id)}
                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); history.selectedId = c.id } }}>
-              {#if c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
+              {#if !filterActive && c.head}<span class="headpill" style="color:{laneColor(c.lane)};border-color:{laneColor(c.lane)}55;background:{laneColor(c.lane)}1f">{c.head}</span>{/if}
               <span class="ava" style="background:{av.bg};color:{av.fg}" title={c.author}>{av.initials}</span>
               <span class="cmid"><span class="cmsg">{c.message}</span><span class="csub" title={new Date(c.whenMs).toLocaleString()}>{shortName(c.author)} · {c.when}</span></span>
             </div>
