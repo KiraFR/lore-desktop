@@ -1,19 +1,26 @@
 <script lang="ts">
-  import type { CommitFile, FileRevision, PreviewData } from './types'
+  import type { CommitFile, DiffLine, FileRevision, PreviewData } from './types'
   import Icon from './Icon.svelte'
   import MediaPreview from './MediaPreview.svelte'
+  import DiffBlock from './DiffBlock.svelte'
   import FileHistorySection from './FileHistorySection.svelte'
-  import { typeName } from './fileTypes'
+  import { typeName, isTextDiffable } from './fileTypes'
   import { fmtSize } from './sizeFormat'
+  import { api } from './api'
+  import { session } from './session.svelte'
 
   // Lightweight preview panel for a file of a History commit: working-copy
   // media + type/size + the file's revision timeline. Deliberately NO Discard
   // and NO Lock — those act on the working copy, out of place next to an
   // arbitrary commit.
-  let { file, isTip, onclose }: {
+  let { file, isTip, revision, parent, onclose }: {
     file: CommitFile
     /** The selected commit is the local tip — the disk matches it, no caveat needed. */
     isTip: boolean
+    /** The selected commit's signature — the diff "target". */
+    revision: string
+    /** The selected commit's first parent signature — the diff "source". */
+    parent: string
     onclose: () => void
   } = $props()
 
@@ -30,6 +37,29 @@
   let revisions = $state<FileRevision[]>([])
   // Best available size without `file cat <rev>`: the newest committed revision.
   const sizeText = $derived(revisions[0] ? fmtSize(revisions[0].size) : '—')
+
+  const textDiffable = $derived(isTextDiffable(file.path))
+
+  let diffLines = $state<DiffLine[] | null>(null)
+  let diffLoading = $state(false)
+  let lastDiffPath = ''
+
+  // Same anti-race pattern as MediaPreview: capture the path, check it still
+  // matches on arrival. Only fetched for text files — the historical diff is
+  // accurate for this commit regardless of `isTip`.
+  $effect(() => {
+    const p = file.path
+    const repoPath = session.config.currentRepo
+    if (!isTextDiffable(p) || !repoPath) { diffLines = null; diffLoading = false; lastDiffPath = ''; return }
+    const same = p === lastDiffPath
+    lastDiffPath = p
+    if (!same) diffLines = null
+    diffLoading = true
+    api.getFileDiffAt(repoPath, p, parent, revision)
+      .then((lines) => { if (file.path === p) diffLines = lines })
+      .catch(() => { if (file.path === p) diffLines = null })
+      .finally(() => { if (file.path === p) diffLoading = false })
+  })
 </script>
 
 <div class="hpreview">
@@ -44,7 +74,16 @@
       <button class="close" onclick={onclose} title="Close preview (Esc)" aria-label="Close preview">×</button>
     </header>
 
-    {#if file.action === 'delete'}
+    {#if textDiffable}
+      <div class="diffhead">Changes in this revision</div>
+      {#if diffLoading}
+        <p class="muted">Loading diff…</p>
+      {:else if diffLines && diffLines.length}
+        <DiffBlock lines={diffLines} />
+      {:else}
+        <p class="muted">No textual changes.</p>
+      {/if}
+    {:else if file.action === 'delete'}
       <div class="gone">
         <Icon name="file" size={26} />
         <p>No longer in the working copy</p>
@@ -81,6 +120,7 @@
   .badge.added { background: rgba(63, 185, 80, .15); color: var(--added); }
   .badge.deleted { background: rgba(248, 81, 73, .15); color: var(--deleted); }
   .close { width: 24px; height: 24px; padding: 0; line-height: 1; font-size: 15px; color: var(--text-muted); flex-shrink: 0; }
+  .diffhead { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; }
   .wcnote { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); margin: 0 0 10px; }
   .gone { display: flex; align-items: center; gap: 12px; padding: 22px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: 12.5px; }
   .gone p { margin: 0; }

@@ -394,6 +394,7 @@
 
   {#if previewFile && selected}
     <HistoryFilePreview file={previewFile} isTip={isLocalTip(selected.id, commits)}
+                        revision={selected.id} parent={selected.parents[0] ?? ''}
                         onclose={() => (previewPath = null)} />
   {/if}
 
