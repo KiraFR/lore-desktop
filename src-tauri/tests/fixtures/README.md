@@ -116,3 +116,56 @@ le fallback icône-seule déjà prévu pour la Task 17.
 `branch archive p2-theirs-src` retire la branche de test de `branch list` ; après
 abort + archive, `status --scan --json` ne rapporte plus aucun `flagConflict` ni
 aucune trace `~base`/`~mine`/`~theirs`.
+
+## `repository update-path` (déplacement de clone, P3 Locate)
+
+Vérifié le 2026-07-11 en déplaçant un vrai clone (`desktoptest1` / repo id
+`019f333af5e073d28bb117ad1596784a`) de `…\p3-locate2\before` vers
+`…\p3-locate2\after` (`Move-Item`), scratch nettoyé après coup.
+
+**Syntaxe réelle :** `lore repository update-path --repository <path> --json`
+— un seul flag `--repository`, **pas** d'argument positionnel pour
+« ancien »/« nouveau » chemin. `<path>` doit être le chemin **actuel** (déjà
+déplacé) du dossier de travail local ; le CLI lit les métadonnées `.lore`
+locales à cet endroit pour retrouver l'`instanceId`, puis pousse le nouveau
+chemin au registre distant pour cet id. Il n'y a pas de moyen de fournir
+explicitement l'ancien chemin — inutile, il est déjà connu côté serveur.
+
+**CONSTAT : (a)** — `status --repository <after>` fonctionne **déjà**
+(exit 0, `repositoryStatusRevision` complet et identique) juste après le
+`Move-Item`, **avant** tout appel à `update-path`. Les métadonnées locales du
+clone se suffisent à elles-mêmes pour `status` : le CLI ne consulte pas le
+registre d'instances pour valider le chemin donné en `--repository`, il lit
+directement les données locales à ce chemin et compare au serveur par id de
+révision/repo.
+
+Ce que `update-path` corrige réellement, c'est un registre **serveur**
+séparé — visible via `lore repository instance list --repository <path>
+--json` — qui associe chaque `instanceId` (uuid interne, un par clone) à son
+dernier chemin connu, avec un flag `stale`. Séquence observée :
+1. Juste après le clone (chemin encore correct) : `instance list` renvoie
+   l'entrée avec `"path":".../before"`, `"stale":0`.
+2. Après `Move-Item` (chemin réel = `after`, registre encore `before`),
+   `status --repository <after>` réussit quand même ; mais interroger le
+   registre à ce moment (`instance list --repository <after>`) fait
+   apparaître l'entrée avec `"path":".../before"` **et** `"stale":1` — le
+   flag passe à stale automatiquement dès qu'une commande tourne depuis un
+   chemin qui ne correspond plus à l'entrée enregistrée.
+3. Après `repository update-path --repository <after> --json` (exit 0),
+   `instance list` renvoie la même entrée avec `"path":".../after"`,
+   `"stale":0` — corrigée.
+
+**Impact flux Locate (Tasks 3-5) :** valider le nouveau chemin par
+`getStatus` seul suffit fonctionnellement (le repo est utilisable
+immédiatement, avant même d'appeler `update-path`) ; appeler `update-path`
+ensuite est un **best-effort d'hygiène** pour que ce clone n'apparaisse plus
+« stale » dans le registre d'instances (utile pour du diagnostic/collab
+multi-machine, pas bloquant pour l'usage local). `--dry-run` sur
+`update-path` ne produit aucune sortie différenciée (même unique événement
+`complete`) — ne pas s'appuyer dessus pour prévisualiser un changement.
+
+**Événements NDJSON observés (`update_path.ndjson`)** : `update-path`
+n'émet **aucun** événement porteur de données, seulement la ligne de fin
+`{"tagName":"complete","data":{"status":0}}` — pas de confirmation du
+nouveau chemin dans le flux, il faut re-interroger `status` ou `instance
+list` séparément pour vérifier l'effet.
