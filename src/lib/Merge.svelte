@@ -1,8 +1,9 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { refreshStatus } from './repo.svelte'
-  import { toastError } from './toast'
+  import { repo, refreshStatus } from './repo.svelte'
+  import { toastError, toastInfo } from './toast'
+  import { mergeWording, externalAbortStep } from './mergeLogic'
   import type { Branch, MergePreview, MergeConflict } from './types'
   import Icon from './Icon.svelte'
 
@@ -18,10 +19,15 @@
   // resolved/unresolved, not which version won).
   let resolvedSide = $state<Record<string, 'mine' | 'theirs'>>({})
   let busy = $state<'' | 'merge' | 'start' | 'resolve' | 'commit' | 'abort'>('')
+  // Whether `source` is trustworthy: confirmed by the user in THIS session's
+  // setup phase. A merge resumed from outside the app starts with a guessed
+  // default — mergeWording() then falls back to neutral labels.
+  let sourceKnown = $state(false)
 
   // The merge always targets the current branch (Lore's `branch merge <source>`).
   const target = $derived(branches.find((b) => b.current)?.name ?? 'main')
   const others = $derived(branches.filter((b) => b.name !== target))
+  const wording = $derived(mergeWording(sourceKnown ? source : null, target))
 
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
   const dir = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
@@ -50,6 +56,23 @@
     }).catch(() => { /* no in-progress merge */ })
   })
 
+  // If `branch merge abort` lands at the CLI while this view is resolving,
+  // the conflicts are gone server-side but the view would stay stuck. Watch
+  // the shared status: a confirmed merge that flips to false without a local
+  // action (busy) means it ended outside the app → back to setup + toast.
+  let sawMerge = false
+  $effect(() => {
+    const step = externalAbortStep(phase === 'resolving', repo.status?.mergeInProgress, sawMerge)
+    sawMerge = step.saw
+    if (step.aborted && !busy) {
+      phase = 'setup'
+      conflicts = []
+      resolvedSide = {}
+      selectedPath = null
+      toastInfo('Merge was aborted outside the app')
+    }
+  })
+
   // Default the source to the first non-current branch; keep it valid.
   $effect(() => {
     if (others.length && !others.some((b) => b.name === source)) source = others[0].name
@@ -73,6 +96,7 @@
     if (!p || !canMerge || busy) return
     busy = 'merge'
     try {
+      sourceKnown = true
       await api.mergeBranch(p, source, `Merge ${source} into ${target}`)
       await refreshStatus()
       phase = 'done'
@@ -86,6 +110,7 @@
     if (!p || busy) return
     busy = 'start'
     try {
+      sourceKnown = true
       await api.mergeStart(p, source)
       conflicts = await api.mergeConflicts(p)
       resolvedSide = {}
@@ -116,7 +141,7 @@
     if (!p || unresolvedCount > 0 || busy) return
     busy = 'commit'
     try {
-      await api.mergeCommit(p, `Merge ${source} into ${target}`)
+      await api.mergeCommit(p, wording.commitMessage)
       await refreshStatus()
       phase = 'done'
     } catch (e) { toastError('Merge commit failed', e) }
@@ -181,7 +206,7 @@
   {:else if phase === 'resolving'}
     <div class="resolveview">
       <div class="warnbar">
-        <Icon name="merge" size={15} /> Merging {source} into {target} — {unresolvedCount} of {conflicts.length} to resolve.
+        <Icon name="merge" size={15} /> {wording.banner} — {unresolvedCount} of {conflicts.length} to resolve.
       </div>
       <div class="two">
         <div class="clist">
@@ -211,7 +236,7 @@
                 </button>
               </div>
               <div class="vcard" class:pick={resolvedSide[selected.path] === 'theirs'}>
-                <div class="vhd">Theirs · {source}</div>
+                <div class="vhd">{wording.theirsCard}</div>
                 <div class="vthumb after"><Icon name="image" size={24} /></div>
                 <button class="keep" class:done={resolvedSide[selected.path] === 'theirs'} disabled={busy !== ''} onclick={() => resolve(selected.path, 'theirs')}>
                   {resolvedSide[selected.path] === 'theirs' ? 'Kept theirs' : 'Keep theirs'}
@@ -237,7 +262,7 @@
       <div class="donecard">
         <div class="checkc"><Icon name="check" size={26} /></div>
         <h3>Merged into {target}</h3>
-        <p class="muted">{source} was merged into {target}.</p>
+        <p class="muted">{wording.done}</p>
         <button class="accent" onclick={onclose}>Done</button>
       </div>
     </div>

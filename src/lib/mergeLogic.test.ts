@@ -32,4 +32,7 @@ describe('externalAbortStep', () => {
   it('resets outside the resolving phase', () => {
     expect(externalAbortStep(false, true, true)).toEqual({ saw: false, aborted: false })
   })
+  it('keeps the latch when the status momentarily vanishes after confirmation', () => {
+    expect(externalAbortStep(true, undefined, true)).toEqual({ saw: true, aborted: false })
+  })
 })

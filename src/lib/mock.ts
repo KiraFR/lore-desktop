@@ -229,6 +229,13 @@ export const mock: LoreApi = {
   },
   async getStatus(repoPath: string) {
     await delay(250)
+    // Dev lever: simulate an out-of-app `branch merge abort` — run
+    // `localStorage.setItem('loredesktop.mock.externalAbort', '1')` in the
+    // devtools, then refocus the window (the focus refresh picks it up).
+    if (localStorage.getItem('loredesktop.mock.externalAbort') === '1') {
+      localStorage.removeItem('loredesktop.mock.externalAbort')
+      mergeConflictState = []
+    }
     const s = stateFor(repoPath)
     return {
       branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,

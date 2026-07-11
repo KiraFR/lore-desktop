@@ -199,4 +199,11 @@ describe('mock status flags', () => {
     await mock.mergeAbort('C:/repos/flags')
     expect((await mock.getStatus('C:/repos/flags')).mergeInProgress).toBe(false)
   })
+  it('external-abort dev lever clears the merge on the next status', async () => {
+    await mock.mergeStart('C:/repos/extabort', 'feature/loot')
+    localStorage.setItem('loredesktop.mock.externalAbort', '1')
+    const s = await mock.getStatus('C:/repos/extabort')
+    expect(s.mergeInProgress).toBe(false)
+    expect(localStorage.getItem('loredesktop.mock.externalAbort')).toBeNull()
+  })
 })
