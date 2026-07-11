@@ -1,5 +1,15 @@
 # Lore Desktop — Lot P4 « visibilité du repo » Implementation Plan
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-11** (subagent-driven, double revue par tâche, revue finale item 5 : READY).
+>
+> **Suites** : vitest **139 passed / 21 fichiers**, 0 failed ; cargo `--lib` **107 passed**, 0 failed ; `npm run check` **0 errors, 0 warnings** (886 fichiers).
+>
+> **Parcours navigateur mock validé** : (1) en-tête Changes « 10 files +3~6−1 » avec couleurs réelles `--added` vert (63,185,80), `--modified` ambre (210,153,34), `--deleted` rouge (248,81,73), tiret U+2212 ; (2) BranchMenu — filtre `maya` → section « Remote » seule avec `user/maya/lighting-wip` estompé (opacity .65, classe `remote`), switch d'une remote-only → l'en-tête passe à `user/maya/lighting-wip` (checkout mock, devient locale), virtualisation préservée sur 2004 branches ; (3) **item 3 livré en variante B** — en-tête « BRANCHES · 2 007 · MAIN ↓1 » (ahead/behind de la branche courante, source status) ; (4) **item 4 (protected) ANNULÉ** — capture Task 9 : `protected` absent de `branch list` ET `branch info`, un badge codé en dur main/master serait mensonger (repli prévu par la spec) ; (5) About repository — 9 lignes ordonnées (Name, Repository id + Copy, Description, Local path + Reveal, Server, Default branch, Current branch, Revision #5, Created **2026-07-05**), Escape ferme, entrée absente sans repo ouvert. Console sans erreur.
+>
+> **Captures réelles pinnées** : `branch_list.ndjson` (`branchListEntry.location`), `branch_info.ndjson` (constat : pas d'ahead/behind par branche → variante B ; `protected` absent → item 4 annulé), `repo_info.ndjson` (tag réel **`repositoryData`** ≠ hypothèse `repositoryInfo` du plan ; champs `remoteUrl`/`id`/`name`/`description`/`defaultBranchName`/`created` epoch **secondes** ; **pas de `size`** → ligne Size supprimée). README des fixtures à jour.
+>
+> **Déviations conscientes vs draft du plan** : item 5 réécrit sur la capture (tag `repositoryData`, champs réels, Size supprimée, Description + Default branch + Created ajoutées, date formatée UTC `YYYY-MM-DD` pour un test stable) ; item 3 en variante B (en-tête) faute d'ahead/behind par branche côté CLI ; item 4 supprimé. Nitpicks non bloquants notés par la revue finale : `api.revealPath` en promesse flottante dans `AboutRepo.svelte` (cohérent avec le design « no toast »), pas de reset de `info` au changement de repo modal ouvert (fenêtre inatteignable), pas de focus-trap (panneau read-only).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Livrer les 5 items read-only du lot P4 (spec `docs/superpowers/specs/2026-07-11-lore-desktop-p4-visibility-design.md`) : compteurs +/~/− dans l'en-tête de Changes, section « Remote » du BranchMenu, badge « protected » lecture seule, ahead/behind lazy par branche, panneau « About repository ».
