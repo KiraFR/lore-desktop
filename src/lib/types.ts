@@ -98,6 +98,12 @@ export interface Branch {
   location?: 'local' | 'remote'
 }
 
+/** Champs lazy de `lore branch info` — absents quand le CLI ne les expose pas. */
+export interface BranchInfo {
+  ahead?: number
+  behind?: number
+}
+
 export interface MergeConflict {
   path: string
   isBinary: boolean
