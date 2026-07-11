@@ -158,6 +158,10 @@ describe('mock api', () => {
   it('getPreview serves a ~theirs sidecar as its base type', async () => {
     const p = await mock.getPreview('C:/repos/game', 'Content/UI/T_Icon_Sword.png~theirs')
     expect(p.kind).toBe('image')
+    // PREVIEW_AUDIO_RE doesn't strip ~theirs internally, so this only passes
+    // if getPreview itself strips the suffix before classifying.
+    const a = await mock.getPreview('C:/repos/game', 'Audio/sfx_hit.wav~theirs')
+    expect(a.kind).toBe('audio')
   })
 })
 

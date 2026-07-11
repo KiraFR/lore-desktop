@@ -7,6 +7,7 @@
   import Icon from './Icon.svelte'
   import MediaPreview from './MediaPreview.svelte'
   import FileHistorySection from './FileHistorySection.svelte'
+  import DiffBlock from './DiffBlock.svelte'
   import { fmtSize } from './sizeFormat'
   import { typeName } from './fileTypes'
 
@@ -97,16 +98,7 @@
       {:else if diff.length === 0}
         <div class="textnote muted"><Icon name="file" size={22} /><p>No text changes to show.</p></div>
       {:else}
-        <div class="diff">
-          {#each diff as line, i (i)}
-            <div class="dl {line.kind}">
-              <span class="ln">{line.oldLine ?? ''}</span>
-              <span class="ln">{line.newLine ?? ''}</span>
-              <span class="mk">{line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ''}</span>
-              <span class="tx">{line.text}</span>
-            </div>
-          {/each}
-        </div>
+        <DiffBlock lines={diff} />
       {/if}
 
       <dl class="meta">
@@ -157,18 +149,6 @@
   .discard:hover:not(:disabled) { color: var(--deleted); border-color: var(--deleted); }
   .textnote { display: flex; align-items: center; gap: 12px; padding: 22px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; }
   .textnote p { margin: 0; }
-  .diff { font-family: var(--font-mono); font-size: 12px; line-height: 1.55; border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin: 4px 0; }
-  .dl { display: flex; }
-  .ln { flex: 0 0 44px; text-align: right; padding: 0 8px; color: var(--text-dim); user-select: none; }
-  .mk { flex: 0 0 16px; text-align: center; color: var(--text-dim); user-select: none; }
-  .tx { flex: 1; white-space: pre; padding-right: 12px; }
-  .dl.add { background: rgba(63, 185, 80, .12); }
-  .dl.add .mk, .dl.add .tx { color: var(--added); }
-  .dl.del { background: rgba(248, 81, 73, .12); }
-  .dl.del .mk, .dl.del .tx { color: var(--deleted); }
-  .dl.context .tx { color: var(--text-muted); }
-  .dl.hunk { background: var(--panel); }
-  .dl.hunk .tx { color: var(--accent-text); }
   .meta { margin: 18px 0 0; }
   .meta > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
   dt { color: var(--text-muted); }
