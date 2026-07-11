@@ -5,7 +5,7 @@
   import { filterRepos, repoName } from './repoList'
   import { toastError } from './toast'
   import { opProgress } from './opProgress.svelte'
-  import { pct, cloneLabel } from './progress'
+  import { pct, cloneProgressLabel, cloneInFlight } from './progress'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
@@ -111,11 +111,11 @@
     <div class="list">
       {#each serverRepos as r (r.id)}
         <div class="rowwrap">
-          <button class="item" onclick={() => onClone(r)} disabled={!!busy}>
+          <button class="item" onclick={() => onClone(r)} disabled={!!busy || cloneInFlight(opProgress.clone)}>
             <Icon name="folder" size={15} />
             <span class="meta">
               <span class="rn">{r.name}</span>
-              <span class="rp">{busy === `clone:${r.id}` ? cloneLabel(pct(opProgress.clone)) : r.id.slice(0, 12) + '…'}</span>
+              <span class="rp">{busy === `clone:${r.id}` ? cloneProgressLabel(opProgress.clone) : r.id.slice(0, 12) + '…'}</span>
             </span>
           </button>
           {#if busy === `clone:${r.id}`}

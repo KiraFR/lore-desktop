@@ -4,7 +4,7 @@
   import { addExistingRepo, cloneServerRepo } from './repoActions'
   import { toastError } from './toast'
   import { opProgress } from './opProgress.svelte'
-  import { pct, cloneLabel } from './progress'
+  import { pct, cloneProgressLabel, cloneInFlight } from './progress'
   import Icon from './Icon.svelte'
   import type { RepoEntry } from './types'
 
@@ -66,8 +66,8 @@
         <span class="ico"><Icon name="folder" size={16} /></span>
         <div class="meta"><strong>{r.name}</strong><p class="muted small mono">{r.id.slice(0, 12)}…</p></div>
         <span class="spacer"></span>
-        <button onclick={() => cloneRepo(r)} disabled={!!busy}>
-          {busy === `clone:${r.id}` ? cloneLabel(pct(opProgress.clone)) : 'Clone…'}
+        <button onclick={() => cloneRepo(r)} disabled={!!busy || cloneInFlight(opProgress.clone)}>
+          {busy === `clone:${r.id}` ? cloneProgressLabel(opProgress.clone) : 'Clone…'}
         </button>
         {#if busy === `clone:${r.id}`}
           {@const p = pct(opProgress.clone)}
