@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { session, bootstrap, loadIdentity } from './lib/session.svelte'
   import { watchRepo } from './lib/notifications.svelte'
-  import { repo, refreshStatus } from './lib/repo.svelte'
+  import { repo, refreshStatus, refreshHistory } from './lib/repo.svelte'
   import { ui, setView } from './lib/ui.svelte'
   import SignIn from './lib/SignIn.svelte'
   import TitleBar from './lib/TitleBar.svelte'
@@ -35,10 +35,14 @@
 
   // Reload whenever the selected repository changes. refreshStatus also refreshes
   // locks + branches in the background, so they never block the initial render.
+  // refreshHistory warms the History cache so entering that view is instant —
+  // silent: one extra background CLI call, a failure just falls back to the
+  // in-view load (History.svelte keeps its own refresh effect).
   $effect(() => {
     session.config.currentRepo
     refreshStatus()
     loadIdentity()
+    refreshHistory(true)
   })
 
   // Live server events (teammate pushes, lock changes) for the open repo.
