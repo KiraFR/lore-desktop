@@ -249,6 +249,12 @@ export const mock: LoreApi = {
       // `localStorage.setItem('loredesktop.mock.staged', '1')` in the browser
       // devtools to preview the staged chip; removeItem to clear it.
       stagedPending: mergeConflictState.length > 0 || localStorage.getItem('loredesktop.mock.staged') === '1',
+      // Seedé depuis les fichiers courants pour rester cohérent (spec P4 item 1).
+      summary: {
+        adds: s.files.filter((f) => f.action === 'add').length,
+        mods: s.files.filter((f) => f.action === 'modify' || f.action === 'move' || f.action === 'copy').length,
+        dels: s.files.filter((f) => f.action === 'delete').length,
+      },
       files: [...s.files],
     } as StatusResult
   },

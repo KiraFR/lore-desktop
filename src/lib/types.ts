@@ -24,6 +24,8 @@ export interface StatusResult {
   mergeInProgress: boolean
   /** An interrupted commit/merge left a staged state; picked up by the next commit/merge. */
   stagedPending: boolean
+  /** Compteurs wire repositoryStatusSummary ; absent sur un CLI plus ancien. */
+  summary?: { adds: number; mods: number; dels: number }
   files: ChangedFile[]
 }
 
