@@ -112,7 +112,9 @@
       <dl class="meta">
         <div><dt>Type</dt><dd>{typeName(file.path)}</dd></div>
         <div><dt>Size</dt><dd>{sizeText}</dd></div>
-        {#if preview?.width && preview?.height}
+        <!-- Gated on isBinary: `preview` is only reset by MediaPreview while it
+             is mounted, so a stale binary's dimensions would linger on a text file. -->
+        {#if file.isBinary && preview?.width && preview?.height}
           <div><dt>Dimensions</dt><dd>{preview.width} × {preview.height}</dd></div>
         {/if}
         <div>
