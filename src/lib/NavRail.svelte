@@ -38,7 +38,7 @@
   .item:hover, .railtoggle:hover { background: var(--panel-hover); border: none; color: var(--text); }
   .item.active { background: var(--accent-soft); color: var(--accent-text); }
   .rlabel { white-space: nowrap; overflow: hidden; }
-  .count { margin-left: auto; font-size: 11px; background: rgba(255, 255, 255, .09); color: var(--text-muted); border-radius: 999px; padding: 0 6px; }
+  .count { margin-left: auto; font-size: 11px; background: var(--border); color: var(--text-muted); border-radius: 999px; padding: 0 6px; }
   .item.active .count { background: var(--accent-ring); color: var(--accent-text); }
   .railtoggle { margin-top: auto; color: var(--text-dim); }
   .rail.collapsed .item, .rail.collapsed .railtoggle { justify-content: center; padding: 0; gap: 0; }

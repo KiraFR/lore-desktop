@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { session, signOut, setDisplayName } from './session.svelte'
+  import { session, signOut, setDisplayName, setTheme } from './session.svelte'
   import { repo } from './repo.svelte'
   import { initialsFor, displayNameFor } from './identity'
+  import { resolveTheme } from './theme'
   import Icon from './Icon.svelte'
   import { api } from './api'
   import { toastError } from './toast'
@@ -9,6 +10,7 @@
   let { onclose }: { onclose: () => void } = $props()
 
   let name = $state(session.config.displayName ?? '')
+  const theme = $derived(resolveTheme(session.config.theme))
 
   const email = $derived(session.identity?.email ?? null)
   const initials = $derived(initialsFor(session.config.displayName, email))
@@ -67,6 +69,13 @@
     <input type="checkbox" checked={storeOn === true} disabled={storeOn === null || !session.config.serverUrl} onchange={toggleStore} />
     <span>Use shared store for clones</span>
   </label>
+  <div class="appearance">
+    <span class="aplabel">Appearance</span>
+    <div class="seg">
+      <button class:active={theme === 'dark'} onclick={() => setTheme('dark')}>Dark</button>
+      <button class:active={theme === 'light'} onclick={() => setTheme('light')}>Light</button>
+    </div>
+  </div>
   <div class="div"></div>
   <button class="action out" onclick={doSignOut} disabled={!!repo.busy}>
     <Icon name="external" size={15} /> Sign out
@@ -90,4 +99,10 @@
   .action :global(svg) { color: currentColor; }
   .storetoggle { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
   .storetoggle input { accent-color: var(--accent); }
+  .appearance { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
+  .aplabel { color: var(--text); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg button { padding: 3px 12px; font-size: 11.5px; border: none; border-radius: 0; background: transparent; color: var(--text-muted); }
+  .seg button.active { background: var(--accent); color: var(--on-accent); }
+  .seg button:hover:not(.active) { background: var(--panel-hover); color: var(--text); }
 </style>

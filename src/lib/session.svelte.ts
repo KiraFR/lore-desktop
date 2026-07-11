@@ -1,6 +1,7 @@
 import { api } from './api'
 import { toastError } from './toast'
 import { promoteRepo, removeRepoPath, replaceRepoPath, nextCurrentRepo } from './repoList'
+import { applyTheme, resolveTheme, type Theme } from './theme'
 import type { AppConfig, Identity } from './types'
 
 /** The studio's Lore server; used as the default when no server is stored yet. */
@@ -26,6 +27,7 @@ export async function bootstrap() {
       config = { ...config, recentRepos: promoteRepo(config.recentRepos, config.currentRepo) }
     }
     session.config = config
+    applyTheme(resolveTheme(config.theme))
     session.signedIn = await api.isAuthenticated()
   } catch (e) {
     toastError('Startup failed', e)
@@ -94,6 +96,12 @@ export async function loadIdentity() {
 export async function setDisplayName(name: string) {
   session.config = { ...session.config, displayName: name.trim() || null }
   await api.saveConfig(session.config)
+}
+
+export async function setTheme(theme: Theme) {
+  session.config = { ...session.config, theme }
+  await api.saveConfig(session.config)
+  applyTheme(theme)
 }
 
 export async function signOut() {

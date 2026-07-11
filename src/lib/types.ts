@@ -150,6 +150,8 @@ export interface AppConfig {
   recentRepos: string[]
   /** Optional user-chosen name shown in the avatar/menu; falls back to the email. */
   displayName?: string | null
+  /** UI theme; unset = dark (the default). */
+  theme?: 'light' | 'dark'
 }
 
 export interface HistoryPage {

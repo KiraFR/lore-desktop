@@ -341,8 +341,8 @@
   .arr { color: var(--text-muted); padding-bottom: 8px; }
   select { width: 100%; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); font: inherit; }
   .targetlbl { padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
-  .info { display: flex; align-items: center; gap: 9px; background: var(--accent-soft); border: 1px solid #244a73; border-radius: 8px; padding: 11px 13px; font-size: 12px; color: #bcd3f2; margin: 14px 0; }
-  .info :global(svg) { color: #7fb0ff; flex-shrink: 0; }
+  .info { display: flex; align-items: center; gap: 9px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 8px; padding: 11px 13px; font-size: 12px; color: var(--accent-text); margin: 14px 0; }
+  .info :global(svg) { color: var(--accent); flex-shrink: 0; }
   .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .metric { background: var(--panel); border-radius: 8px; padding: 12px; }
   .metric.warn { background: var(--warn-bg); }

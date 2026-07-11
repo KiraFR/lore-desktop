@@ -25,10 +25,28 @@
   --font-mono: ui-monospace, "Cascadia Code", monospace;
 }
 
-/* Add a theme later by overriding only the tokens it changes, e.g.
-   :root[data-theme="light"] { --bg: #ffffff; --text: #1c1f23; ... }
-   and setting document.documentElement.dataset.theme from saved config.
-   No component changes needed — components read tokens only. */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-elev: #f6f8fa;
+  --panel: #ffffff;
+  --panel-hover: #eef1f4;
+  --border: #d0d7de;
+  --border-strong: #afb8c1;
+  --text: #1f2328;
+  --text-muted: #59636e;
+  --text-dim: #818b98;
+  --accent: #0969da;
+  --accent-hover: #0860ca;
+  --accent-soft: #ddf4ff;
+  --accent-ring: rgba(9, 105, 218, 0.30);
+  --accent-text: #0a3069;
+  --on-accent: #ffffff;
+  --added: #1a7f37;
+  --modified: #9a6700;
+  --deleted: #cf222e;
+  --warn-bg: #fff8c5;
+  --warn-text: #7d4e00;
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
