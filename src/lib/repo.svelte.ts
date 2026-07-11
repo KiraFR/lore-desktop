@@ -32,8 +32,11 @@ export const history = $state({
   repoPath: null as string | null,
 })
 
+let historyToken = 0
+
 export async function refreshHistory(silent = false) {
   const path = session.config.currentRepo
+  const token = ++historyToken
   if (!path) {
     Object.assign(history, { commits: [], cursor: undefined, selectedId: null, loaded: false, repoPath: null })
     return
@@ -44,6 +47,8 @@ export async function refreshHistory(silent = false) {
   }
   try {
     const page = await api.getHistory(path, HISTORY_PAGE)
+    // A newer call (or a repo switch) superseded this one — drop the stale page.
+    if (token !== historyToken || session.config.currentRepo !== path) return
     history.commits = page.commits
     history.cursor = page.nextCursor
     if (page.commits.length && (history.selectedId === null || !page.commits.some((c) => c.id === history.selectedId)))
@@ -55,7 +60,10 @@ export async function refreshHistory(silent = false) {
 export async function loadMoreHistory() {
   const path = session.config.currentRepo
   if (!path || !history.cursor) return
+  const token = historyToken
   const page = await api.getHistory(path, HISTORY_PAGE, history.cursor)
+  // A refresh/switch happened while paging — the appended page would be stale.
+  if (token !== historyToken || session.config.currentRepo !== path) return
   history.commits = [...history.commits, ...page.commits]
   history.cursor = page.nextCursor
 }
