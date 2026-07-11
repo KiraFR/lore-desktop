@@ -2,6 +2,65 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-11** (10/10 tâches, vérification finale
+> Task 10 passée). Suites : vitest 129 (17 fichiers), cargo 100, svelte-check 0 erreur
+> / 0 warning.
+> **Parcours navigateur mock complet :**
+> (1) Anti-race — switchs rapides A↔B pendant que History charge : après stabilisation
+> `history.repoPath === currentRepo` dans TOUS les cas (chargement simple : loaded=true,
+> 200 commits ; A→B concurrent et quad-switch : jamais de page de A sous l'en-tête de B),
+> le mock renvoie les mêmes commits pour chaque repo donc l'invariant vérifié est
+> l'absence de mélange + le chargement propre du repo final, pas une différence de seed.
+> (2) Locate (levier `loredesktop.mock.missing`) — repo NON courant (`game-main`) : ligne
+> estompée (opacity .6), badge « Missing » en `--warn-text` ambre (rgb(227,179,65)), item
+> désactivé avec title « This folder is missing — use Locate », bouton « Locate… » à la
+> place du « × » Remove ; les deux autres repos restent normaux. Repo COURANT dans le
+> levier au reload → `currentRepo` remis à null + retour au RepoPicker (toast
+> « … is missing — locate it from the repository list » émis dans le même bloc
+> App.svelte, transitoire donc non capturé à l'écran mais son branchement est exécuté).
+> (3) Behind chip — `api.syncToRevision(cur,'…')` place `revisionNumber` 3 < `local` 5 →
+> `chipFor` renvoie `{kind:'behind',revision:3}` ; StatusBar rend un BOUTON gris
+> (color rgb(145,152,161), PAS l'ambre du warn) « At rev 3 — back to latest » avec tooltip,
+> et le bouton Commit est désactivé avec title « Commit is disabled while behind the
+> latest — sync back first ». Clic chip → `sync` mock (round-trip `revisionNumber =
+> localRevisionNumber`) → chip disparu du DOM, garde behind levée (title behind clearé).
+> Bouton « Sync to this revision… » de History : ABSENT sur le tip sélectionné, PRÉSENT
+> sur un commit ancien (c100003), désactivé (arbre mock sale, 10 fichiers) avec title
+> « Commit or discard your local changes first ».
+> **Vérifications réelles (repli CLI — la fenêtre Tauri réelle exige computer-use dont les
+> screenshots timeout dans cet env ; le backend a été exercé avec le vrai CLI et se
+> comporte exactement comme les gardes UI l'attendent) :**
+> (1) Time travel réel sur `lore-test-repo` (feature/test, propre, rev 20) : `lore sync
+> cccaca367…` (rev 19) → status `revisionNumber:19` < `revisionLocalNumber:20`
+> (= le signal exact du chip behind), `isLocalAhead:1`/`isRemoteAhead:0` INCHANGÉS
+> (confirme que le chip ne s'appuie PAS sur remote-ahead), summary tout à 0 (être sur une
+> révision passée n'est pas un changement committable) ; `lore sync` sans arg →
+> `revision == revisionLocal` (rev 20, retour au tip), summary 0.
+> (2) Locate réel : clone frais dans `$TEMP\p3-final\before`, `is_dir=true` + `status` OK ;
+> `Move-Item` → `before` `is_dir=false` (déclencheur Missing = `os_path_exists` faux),
+> `after` `is_dir=true` ; `status --repository <after>` répond exit 0 (branch main, rev 9)
+> AVANT tout `update-path` (constat (a) — la preuve de vie `getStatus` de l'app suffit) ;
+> `repository update-path --repository <after>` exit 0 (hygiène registre best-effort).
+> Temp supprimé, aucun process `lore` résiduel.
+> **Constats des captures :** update-path = constat (a) (le status marche déjà après le
+> Move, update-path ne fait que réenregistrer l'instance côté serveur / effacer le flag
+> `stale`, best-effort) ; « behind » = `revisionNumber < revisionLocalNumber`, PAS
+> `isRemoteAhead`/`remoteAhead` (qui répondent au retard vis-à-vis du serveur, question
+> différente) ; `sync` prend un HASH positionnel optionnel (pas de numéro, pas de variante
+> namespaced `revision sync`), sans arg = retour au tip ; le CLI ne refuse PAS un sync
+> arrière sur arbre sale (exit 0, pas de `--force`), il reporte la modif locale en
+> `revisionStaged` — donc pas d'erreur native à afficher.
+> **Déviations conscientes du lot :** le DTO status expose `local_revision_number` /
+> `localRevisionNumber` (ajouté sur le modèle merge/staged du P1) car le signal behind
+> n'existait pas en champ dédié dans le wire ; la garde « arbre sale » du sync-to-revision
+> est purement app-side (dérivée du nombre de fichiers du status, `chipFor` réutilisé),
+> le CLI n'en fournissant aucune ; le flux Locate valide le nouveau dossier par
+> `getStatus` AVANT d'appeler `updateRepoPath` (identité prouvée avant de toucher le
+> registre — un dossier qui ne répond pas n'est jamais re-pointé). **Limite :** l'UI
+> réelle (fenêtre Tauri, vraies boîtes natives) n'a pas été pilotée bout-en-bout
+> (computer-use screenshots timeout / `window.confirm` natif fige l'automatisation) ;
+> couverture assurée par le parcours mock DOM + l'équivalence backend CLI ci-dessus.
+
 **Goal:** Livrer les 3 items du lot P3 (spec `docs/superpowers/specs/2026-07-11-lore-desktop-p3-recovery-design.md`) : garde anti-race de `refreshHistory`, « Locate moved project » (détection des repos manquants + relocalisation via `repository update-path`), et sync-to-revision (« time travel ») depuis History avec chip `behind` et retour au latest.
 
 **Architecture:** Backend Rust : deux commandes triviales (`os_path_exists`, `lore_update_path`) + `lore_sync_to` sur le runner streaming existant (`run_lore_op`, kind "sync" → progression déjà câblée). Frontend : jetons anti-race dans `repo.svelte.ts` (pattern `sizesToken` existant), helper pur `missingRepos`, état `missing` + flux Locate dans RepoSwitcher/RepoPicker/App, extension de `statusChip` (kind `behind`, précédence merge > staged > behind), bouton « Sync to this revision… » dans le détail de commit History, garde Commit désactivé quand behind. Mock : leviers localStorage (repo manquant, état behind).
