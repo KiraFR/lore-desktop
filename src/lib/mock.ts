@@ -1,4 +1,5 @@
 import { isPreviewableImage, stripTheirsSuffix } from './previewKind'
+import { NON_FF_PUSH_SAMPLE } from './pushErrors'
 import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
@@ -27,6 +28,13 @@ const CUBE_OBJ = 'v -1 -1 -1\nv 1 -1 -1\nv 1 1 -1\nv -1 1 -1\nv -1 -1 1\nv 1 -1 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const CONFIG_KEY = 'loredesktop.config'
 const AUTH_KEY = 'loredesktop.signedin'
+
+// Dev lever: simulate a push refused because the remote advanced —
+// `localStorage.setItem('loredesktop.mock.pushNonFF', '1')` in the devtools.
+// Push throws the pinned refusal (same message as the captured fixture, so the
+// matcher exercises the real path); a successful sync clears the lever
+// (the remote is caught up).
+const PUSH_NONFF_KEY = 'loredesktop.mock.pushNonFF'
 
 const FAKE_REPOS: RepoEntry[] = [
   { id: '019f2e14006f7870a7b27df367c78b72', name: 'game-main' },
@@ -298,6 +306,10 @@ export const mock: LoreApi = {
     s.localAhead += 1
   },
   async push(repoPath: string, onProgress?: (p: OpProgress) => void) {
+    if (localStorage.getItem(PUSH_NONFF_KEY) === '1') {
+      await delay(250)
+      throw new Error(NON_FF_PUSH_SAMPLE)
+    }
     for (let i = 1; i <= 6; i++) {
       await delay(100)
       onProgress?.({ done: i, total: 6, unit: 'files' })
@@ -312,6 +324,7 @@ export const mock: LoreApi = {
     const s = stateFor(repoPath)
     s.remoteAhead = 0
     s.revisionNumber = s.localRevisionNumber
+    localStorage.removeItem(PUSH_NONFF_KEY)
   },
   async syncToRevision(repoPath: string, _revision: string, onProgress?: (p: OpProgress) => void) {
     for (let i = 1; i <= 6; i++) {

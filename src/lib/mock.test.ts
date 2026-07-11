@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mock } from './mock'
+import { isNonFastForwardPush, errorMessage } from './pushErrors'
 import type { OpProgress } from './types'
 
 describe('mock api', () => {
@@ -237,5 +238,20 @@ describe('mock status flags', () => {
     const s = await mock.getStatus('C:/repos/extabort')
     expect(s.mergeInProgress).toBe(false)
     expect(localStorage.getItem('loredesktop.mock.externalAbort')).toBeNull()
+  })
+})
+
+describe('mock push non-fast-forward lever', () => {
+  it('push rejects with the pinned refusal while the lever is set', async () => {
+    localStorage.setItem('loredesktop.mock.pushNonFF', '1')
+    const err = await mock.push('C:/repos/nff').catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(isNonFastForwardPush(errorMessage(err))).toBe(true)
+  })
+  it('a successful sync clears the lever, then push succeeds', async () => {
+    localStorage.setItem('loredesktop.mock.pushNonFF', '1')
+    await mock.sync('C:/repos/nff')
+    expect(localStorage.getItem('loredesktop.mock.pushNonFF')).toBeNull()
+    await expect(mock.push('C:/repos/nff')).resolves.toBeUndefined()
   })
 })
