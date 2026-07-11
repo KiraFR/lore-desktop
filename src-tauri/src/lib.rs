@@ -38,6 +38,7 @@ pub fn run() {
         commands::lore_commit,
         commands::lore_push,
         commands::lore_sync,
+        commands::lore_sync_to,
         commands::lore_set_lock,
         commands::lore_locks,
         commands::lore_diff,

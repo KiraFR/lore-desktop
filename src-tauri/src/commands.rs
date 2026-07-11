@@ -57,6 +57,9 @@ pub struct StatusResultDto {
     pub local_ahead: u64,
     pub remote_ahead: u64,
     pub revision_number: u64,
+    /// The local head's revision number. `revision_number < local_revision_number`
+    /// means the working copy is time-traveled to a past revision (behind chip).
+    pub local_revision_number: u64,
     pub remote_available: bool,
     pub remote_authorized: bool,
     /// A merge is waiting for conflict resolution (revisionMerged* non-zero).
@@ -207,7 +210,7 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
         })
         .collect();
 
-    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, remote_available, remote_authorized, merge_in_progress, staged_pending, files }
+    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, local_revision_number: local_n, remote_available, remote_authorized, merge_in_progress, staged_pending, files }
 }
 
 /// `flag*`/`is*` fields serialize as JSON booleans (via `u8_as_bool`); accept a
@@ -893,6 +896,19 @@ pub async fn lore_sync(app: tauri::AppHandle, repo_path: String, op_id: Option<S
     blocking(move || {
         let op_id = op_id_or_default(op_id);
         run_lore_op(&app, "sync", &op_id, &["sync", "--repository", &repo_path])?;
+        Ok(())
+    })
+    .await
+}
+
+/// Time travel: sync the working copy to a specific revision hash (streaming,
+/// same progress relay + stall detection as a plain sync). The CLI does not
+/// refuse a dirty tree (verified) — the UI gates it on a clean tree instead.
+#[tauri::command]
+pub async fn lore_sync_to(app: tauri::AppHandle, repo_path: String, revision: String, op_id: Option<String>) -> Result<(), String> {
+    blocking(move || {
+        let op_id = op_id_or_default(op_id);
+        run_lore_op(&app, "sync", &op_id, &["sync", &revision, "--repository", &repo_path])?;
         Ok(())
     })
     .await
@@ -1963,6 +1979,16 @@ mod status_tests {
         let s = status_from(&parse_events(absent).unwrap(), std::path::Path::new(""));
         assert!(!s.merge_in_progress);
         assert!(!s.staged_pending);
+    }
+
+    #[test]
+    fn behind_fixture_reports_a_past_revision() {
+        let events = parse_events(include_str!("../tests/fixtures/status_behind.ndjson")).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        // Time-traveled: the current revision trails the local head.
+        assert!(s.local_revision_number > 0);
+        assert!(s.revision_number < s.local_revision_number,
+            "current {} should trail local head {}", s.revision_number, s.local_revision_number);
     }
 }
 
