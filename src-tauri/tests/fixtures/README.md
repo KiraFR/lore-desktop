@@ -430,3 +430,21 @@ HEAD est ce merge) — donc `merge_in_progress = revisionMerged != 0` (commands.
 est trop large. Le garde de `syncAndPush` s'appuie sur `stagedPending` (revisionStaged
 != 0), seul discriminant fiable d'un merge NON résolu (cf. status_merge.ndjson : merge
 en conflit → revisionStaged non-zéro + fichiers flagConflictUnresolved).
+
+**Shared store** (fixtures shared_store_info.ndjson / shared_store_info_none.ndjson,
+capturées le 2026-07-11). `shared-store info --json` émet un event
+`{"tagName":"sharedStoreInfo","data":{...}}` puis `complete status 0` dans les DEUX
+cas (avec ou sans store — le cas « aucun store » n'est PAS une erreur). Champs (⚠ ce
+sont des ARRAYS parallèles par remote, pas un `path` singulier) : `useAutomatically`
+(0/1, réglage GLOBAL machine), `remoteUrls` (array de remotes, ex. ["lore.example.com:41337"]),
+`paths` (array de chemins de store), `exists` (array de 0/1). Sans store : status 0,
+`useAutomatically:0`, arrays vides. Création : `shared-store create <remote-url> [--path]`
+— l'URL du remote est REQUISE ; émet `{"tagName":"sharedStoreCreate","data":{"path":"…"}}`.
+Store créé dans `%LOCALAPPDATA%\Epic Games\lore\data\<remote>_<port>\shared_store` (RESTE
+en place — dev machine). Activation : `shared-store set-use-automatically <true|false>` —
+réglage GLOBAL une-fois (pas par-clone), et `clone --help` n'expose AUCUN flag store.
+Décision UI (spec item 1) : **variante B — toggle global « Use shared store for clones »
+dans l'AvatarMenu**. ⚠ Conséquence pour les commandes Rust : `enable` doit prendre la
+server-url (create l'exige) — create le store du remote courant s'il manque, puis
+set-use-automatically true ; `disable` = set-use-automatically false (sans arg). `status`
+= exists si `exists`/`paths` non vides, path = `paths[0]`, autoUse = `useAutomatically`.
