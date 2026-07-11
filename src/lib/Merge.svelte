@@ -4,7 +4,10 @@
   import { repo, refreshStatus } from './repo.svelte'
   import { toastError, toastInfo } from './toast'
   import { mergeWording, externalAbortStep } from './mergeLogic'
-  import type { Branch, MergePreview, MergeConflict } from './types'
+  import { listThumbs, requestThumb } from './thumbs.svelte'
+  import { theirsSidecar } from './previewKind'
+  import DiffBlock from './DiffBlock.svelte'
+  import type { Branch, MergePreview, MergeConflict, DiffLine } from './types'
   import Icon from './Icon.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
@@ -79,6 +82,39 @@
   // Default the source to the first non-current branch; keep it valid.
   $effect(() => {
     if (others.length && !others.some((b) => b.name === source)) source = others[0].name
+  })
+
+  // Queue real working-copy thumbnails for every binary conflict: Mine = the
+  // file itself, Theirs = the `<name>~theirs` sidecar the CLI materializes
+  // during a conflicted merge (verified on a real merge — see the fixtures
+  // README). A path with no thumbnail stays null in listThumbs → icon fallback.
+  $effect(() => {
+    if (phase !== 'resolving') return
+    for (const c of conflicts) {
+      if (!c.isBinary) continue
+      requestThumb(c.path)
+      requestThumb(theirsSidecar(c.path))
+    }
+  })
+
+  // Mini-diff for the selected TEXT conflict (same anti-race pattern as
+  // FilePreview). What `lore diff` shows during a merge was pinned by the
+  // plan's verification task; an empty/failed diff just renders nothing.
+  let miniDiff = $state<DiffLine[]>([])
+  let miniLoading = $state(false)
+  let lastMiniPath = ''
+
+  $effect(() => {
+    const c = selected
+    const p = session.config.currentRepo
+    if (!c || c.isBinary || !p || phase !== 'resolving') { miniDiff = []; miniLoading = false; lastMiniPath = ''; return }
+    const same = c.path === lastMiniPath
+    lastMiniPath = c.path
+    if (!same) { miniDiff = []; miniLoading = true }
+    api.getDiff(p, c.path)
+      .then((d) => { if (selectedPath === c.path) miniDiff = d })
+      .catch(() => { if (selectedPath === c.path) miniDiff = [] })
+      .finally(() => { if (selectedPath === c.path) miniLoading = false })
   })
 
   async function loadPreview() {
@@ -230,17 +266,40 @@
               <Icon name="info" size={14} />
               {selected.isBinary ? "Binary asset — can't merge line by line. Pick the version to keep." : 'Pick the version to keep for this file.'}
             </p>
+            {#if !selected.isBinary}
+              {#if miniLoading}
+                <p class="note"><Icon name="info" size={14} /> Loading changes…</p>
+              {:else if miniDiff.length > 0}
+                <div class="minidiff"><DiffBlock lines={miniDiff} maxLines={8} /></div>
+              {/if}
+            {/if}
             <div class="vs">
               <div class="vcard" class:pick={resolvedSide[selected.path] === 'mine'}>
                 <div class="vhd">Mine · {target}</div>
-                <div class="vthumb before"><Icon name="image" size={24} /></div>
+                {#if selected.isBinary}
+                  <div class="vthumb before">
+                    {#if listThumbs.get(selected.path)}
+                      <img class="vimg" src={listThumbs.get(selected.path)} alt="Mine — working copy" />
+                    {:else}
+                      <Icon name="image" size={24} />
+                    {/if}
+                  </div>
+                {/if}
                 <button class="keep" class:done={resolvedSide[selected.path] === 'mine'} disabled={busy !== ''} onclick={() => resolve(selected.path, 'mine')}>
                   {resolvedSide[selected.path] === 'mine' ? 'Kept mine' : 'Keep mine'}
                 </button>
               </div>
               <div class="vcard" class:pick={resolvedSide[selected.path] === 'theirs'}>
                 <div class="vhd">{wording.theirsCard}</div>
-                <div class="vthumb after"><Icon name="image" size={24} /></div>
+                {#if selected.isBinary}
+                  <div class="vthumb after">
+                    {#if listThumbs.get(theirsSidecar(selected.path))}
+                      <img class="vimg" src={listThumbs.get(theirsSidecar(selected.path))} alt="Theirs — incoming version" />
+                    {:else}
+                      <Icon name="image" size={24} />
+                    {/if}
+                  </div>
+                {/if}
                 <button class="keep" class:done={resolvedSide[selected.path] === 'theirs'} disabled={busy !== ''} onclick={() => resolve(selected.path, 'theirs')}>
                   {resolvedSide[selected.path] === 'theirs' ? 'Kept theirs' : 'Keep theirs'}
                 </button>
@@ -319,6 +378,9 @@
   .vthumb { height: 104px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); margin-bottom: 11px; }
   .vthumb.before { background: #2b2f35; }
   .vthumb.after { background: #33475f; }
+  .vthumb { overflow: hidden; }
+  .vimg { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+  .minidiff { margin: 0 0 14px; }
   .keep { width: 100%; }
   .keep.done { background: var(--accent-soft); border-color: #255089; color: var(--accent-text); }
   .tip { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; margin-top: 14px; }
