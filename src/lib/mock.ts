@@ -119,16 +119,20 @@ const MOCK_OLD_SIZES: Record<string, number> = {
 
 function buildBranches(extra: number): Branch[] {
   const base: Branch[] = [
-    { name: 'main', current: true },
-    { name: 'feature/loot', current: false },
-    { name: 'fix/lighting-bake', current: false },
-    { name: 'experimental/ai-nav', current: false },
+    { name: 'main', current: true, location: 'local' },
+    { name: 'feature/loot', current: false, location: 'local' },
+    { name: 'fix/lighting-bake', current: false, location: 'local' },
+    { name: 'experimental/ai-nav', current: false, location: 'local' },
+    // Remote-only: visible in the new Remote section; switching checks them out.
+    { name: 'release/1.0-cut', current: false, location: 'remote' },
+    { name: 'user/maya/lighting-wip', current: false, location: 'remote' },
+    { name: 'hotfix/crash-on-load', current: false, location: 'remote' },
   ]
   const prefixes = ['feature', 'fix', 'chore', 'release', 'hotfix', 'exp', 'wip', 'user']
   const topics = ['loot', 'lighting', 'nav', 'inventory', 'audio', 'netcode', 'mesh', 'ui', 'save', 'recoil', 'input', 'materials', 'ai', 'physics', 'vfx', 'hud', 'quest', 'crafting']
   const gen: Branch[] = []
   for (let i = 0; i < extra; i++) {
-    gen.push({ name: `${prefixes[i % prefixes.length]}/${topics[(i * 5) % topics.length]}-${i + 1}`, current: false })
+    gen.push({ name: `${prefixes[i % prefixes.length]}/${topics[(i * 5) % topics.length]}-${i + 1}`, current: false, location: 'local' })
   }
   return [...base, ...gen]
 }
@@ -356,7 +360,11 @@ export const mock: LoreApi = {
   },
   async switchBranch(repoPath: string, name: string) {
     await delay(300)
-    branchList = branchList.map((b) => ({ ...b, current: b.name === name }))
+    branchList = branchList.map((b) => ({
+      ...b,
+      current: b.name === name,
+      location: b.name === name ? 'local' : b.location,
+    }))
     stateFor(repoPath).branch = name
   },
   async createBranch(repoPath: string, name: string, _basedOn: string) {

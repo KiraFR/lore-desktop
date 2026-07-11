@@ -6,6 +6,7 @@
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
+  import { groupBranches } from './branchGrouping'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -15,7 +16,8 @@
   let busy = $state(false)
 
   const currentName = $derived(branches.list.find((b) => b.current)?.name ?? 'main')
-  const shown = $derived(branches.list.filter((b) => b.name.toLowerCase().includes(filter.trim().toLowerCase())))
+  const rows = $derived(groupBranches(branches.list, filter))
+  const branchCount = $derived(rows.reduce((n, r) => (r.kind === 'branch' ? n + 1 : n), 0))
 
   const LANE = ['#3067d4', '#3fb950', '#d29922', '#a371f7', '#ec6a5e']
 
@@ -23,10 +25,10 @@
   let listEl = $state<HTMLDivElement>()
   let listScroll = $state(0)
   const ROW_H = 34
-  const listHeight = $derived(Math.min(shown.length * ROW_H, 238))
+  const listHeight = $derived(Math.min(rows.length * ROW_H, 238))
   const winFirst = $derived(Math.max(0, Math.floor(listScroll / ROW_H) - 4))
-  const winLast = $derived(Math.min(shown.length, Math.ceil((listScroll + listHeight) / ROW_H) + 4))
-  const windowBranches = $derived(shown.slice(winFirst, winLast))
+  const winLast = $derived(Math.min(rows.length, Math.ceil((listScroll + listHeight) / ROW_H) + 4))
+  const windowRows = $derived(rows.slice(winFirst, winLast))
   function onListScroll() { if (listEl) listScroll = listEl.scrollTop }
   $effect(() => { filter; listScroll = 0; if (listEl) listEl.scrollTop = 0 })
 
@@ -88,20 +90,27 @@
 
 <div class="menu">
   <input class="search" bind:value={filter} placeholder="Filter branches" />
-  <div class="sec">Branches · {shown.length.toLocaleString()}</div>
+  <div class="sec">Branches · {branchCount.toLocaleString()}</div>
   <div class="list" bind:this={listEl} onscroll={onListScroll} style="height:{listHeight}px">
-    <div class="listvp" style="height:{shown.length * ROW_H}px">
-      {#each windowBranches as b, k (b.name)}
+    <div class="listvp" style="height:{rows.length * ROW_H}px">
+      {#each windowRows as r, k (r.kind === 'header' ? '§' + r.label : r.branch.name)}
         <div class="rowwrap" style="top:{(winFirst + k) * ROW_H}px; height:{ROW_H}px">
-          <button class="item" class:cur={b.current}
-                  onclick={() => (b.current ? onclose() : switchTo(b.name))} disabled={busy}>
-            <span class="dot" style="background:{LANE[(winFirst + k) % LANE.length]}"></span>
-            <span class="bn">{b.name}</span>
-            {#if b.current}<Icon name="check" size={14} />{/if}
-          </button>
-          {#if !b.current}
-            <button class="arch" title="Archive (hides from lists; nothing is deleted)"
-                    onclick={() => archive(b.name)} disabled={busy}>Archive</button>
+          {#if r.kind === 'header'}
+            <div class="subsec">{r.label}</div>
+          {:else}
+            {@const b = r.branch}
+            <button class="item" class:cur={b.current} class:remote={b.location === 'remote'}
+                    onclick={() => (b.current ? onclose() : switchTo(b.name))} disabled={busy}>
+              <span class="dot" style="background:{LANE[(winFirst + k) % LANE.length]}"></span>
+              <span class="bn">{b.name}</span>
+              {#if b.current}<Icon name="check" size={14} />{/if}
+            </button>
+            {#if !b.current && b.location !== 'remote'}
+              <!-- Archive reste locale : pas d'extension de la surface d'écriture aux
+                   branches remote-only dans ce lot read-only. -->
+              <button class="arch" title="Archive (hides from lists; nothing is deleted)"
+                      onclick={() => archive(b.name)} disabled={busy}>Archive</button>
+            {/if}
           {/if}
         </div>
       {/each}
@@ -123,6 +132,8 @@
   .menu { position: absolute; top: calc(100% + 6px); left: 0; width: 280px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, .45); z-index: 50; overflow: hidden; padding: 8px 0; }
   .search { display: block; margin: 4px 10px 8px; width: calc(100% - 20px); padding: 7px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .sec { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); padding: 2px 12px 5px; }
+  .subsec { display: flex; align-items: flex-end; height: 100%; padding: 0 12px 5px; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); border-top: 1px solid var(--border); }
+  .item.remote { opacity: .65; }
   .list { overflow-y: auto; overflow-x: hidden; }
   .listvp { position: relative; }
   .rowwrap { position: absolute; left: 0; right: 0; }
