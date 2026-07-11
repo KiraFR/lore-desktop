@@ -1,6 +1,6 @@
 <script lang="ts">
   import { session, signOut } from './session.svelte'
-  import { repo, locks } from './repo.svelte'
+  import { repo, locks, sync } from './repo.svelte'
   import { setView } from './ui.svelte'
   import { chipFor } from './statusChip'
   import Icon from './Icon.svelte'
@@ -35,6 +35,10 @@
     <span class="chip" title="An interrupted commit or merge left a staged state; it will be picked up by the next commit or merge.">
       <Icon name="info" size={12} /> Staged state pending
     </span>
+  {:else if chip?.kind === 'behind'}
+    <button class="chip" onclick={sync} title="Your working copy is on an older revision — click to sync back to the latest">
+      <Icon name="sync" size={12} /> At rev {chip.revision} — back to latest
+    </button>
   {/if}
   <span class="spacer"></span>
   {#if session.config.currentRepo}

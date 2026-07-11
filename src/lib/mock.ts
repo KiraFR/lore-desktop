@@ -145,12 +145,12 @@ let lockList: LockEntry[] = [
   { path: 'Content/Characters/Hero/SK_Hero.uasset', holder: 'Alex L', when: 'yesterday' },
 ]
 
-interface RepoState { branch: string; localAhead: number; remoteAhead: number; files: ChangedFile[] }
+interface RepoState { branch: string; localAhead: number; remoteAhead: number; revisionNumber: number; localRevisionNumber: number; files: ChangedFile[] }
 const repoStates = new Map<string, RepoState>()
 
 function stateFor(repoPath: string): RepoState {
   if (!repoStates.has(repoPath)) {
-    repoStates.set(repoPath, { branch: 'main', localAhead: 0, remoteAhead: 1, files: seedFiles() })
+    repoStates.set(repoPath, { branch: 'main', localAhead: 0, remoteAhead: 1, revisionNumber: 5, localRevisionNumber: 5, files: seedFiles() })
   }
   return repoStates.get(repoPath)!
 }
@@ -242,7 +242,8 @@ export const mock: LoreApi = {
     const s = stateFor(repoPath)
     return {
       branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,
-      revisionNumber: 5, remoteAvailable: true, remoteAuthorized: true,
+      revisionNumber: s.revisionNumber, localRevisionNumber: s.localRevisionNumber,
+      remoteAvailable: true, remoteAuthorized: true,
       mergeInProgress: mergeConflictState.length > 0,
       // A merge implies a staged state; otherwise, dev lever:
       // `localStorage.setItem('loredesktop.mock.staged', '1')` in the browser
@@ -287,7 +288,16 @@ export const mock: LoreApi = {
       await delay(80)
       onProgress?.({ done: i, total: 6, unit: 'files' })
     }
-    stateFor(repoPath).remoteAhead = 0
+    const s = stateFor(repoPath)
+    s.remoteAhead = 0
+    s.revisionNumber = s.localRevisionNumber
+  },
+  async syncToRevision(repoPath: string, _revision: string, onProgress?: (p: OpProgress) => void) {
+    for (let i = 1; i <= 6; i++) {
+      await delay(80)
+      onProgress?.({ done: i, total: 6, unit: 'files' })
+    }
+    stateFor(repoPath).revisionNumber = 3 // time-traveled → below the head (5)
   },
   async pushedLockFiles(_repoPath: string) {
     await delay(150)

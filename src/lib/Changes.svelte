@@ -3,6 +3,7 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { repo, commit, setLock, discardFile } from './repo.svelte'
+  import { chipFor } from './statusChip'
   import { composeCommitMessage } from './commitMessage'
   import { formatDelta } from './sizeFormat'
   import { partitionByLock, filterByQuery } from './changesPartition'
@@ -34,6 +35,7 @@
   const shownCount = $derived(shownCommittable.length + shownLocked.length)
   const branch = $derived(repo.status?.branch ?? 'main')
   const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
+  const behind = $derived(chipFor(repo.status)?.kind === 'behind')
 
   const committablePathKey = $derived(parts.committable.map((f) => f.path).join('\n'))
   // Default: every committable file staged. Teammate-locked files are NEVER
@@ -175,7 +177,8 @@
   <div class="composer">
     <input bind:value={message} placeholder="Summary (required)" disabled={!!repo.busy} />
     <textarea rows="2" placeholder="Description" bind:value={description} disabled={!!repo.busy}></textarea>
-    <button class="accent" onclick={doCommit} disabled={!!repo.busy || !message.trim() || stagedCount === 0}>
+    <button class="accent" onclick={doCommit} disabled={!!repo.busy || !message.trim() || stagedCount === 0 || behind}
+            title={behind ? 'Commit is disabled while behind the latest — sync back first' : undefined}>
       {repo.busy === 'commit' ? 'Committing…' : `Commit to ${branch}`}
       {#if stagedCount > 0}<span class="cf">{stagedCount} {stagedCount === 1 ? 'file' : 'files'}</span>{/if}
     </button>

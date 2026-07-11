@@ -206,6 +206,14 @@ describe('mock op progress', () => {
   it('progress callbacks stay optional', async () => {
     await expect(mock.sync('C:/repos/noprog')).resolves.toBeUndefined()
   })
+  it('syncToRevision leaves the repo behind its local head; sync returns to latest', async () => {
+    await mock.syncToRevision('C:/repos/tt', 'somehash')
+    const behind = await mock.getStatus('C:/repos/tt')
+    expect(behind.revisionNumber < behind.localRevisionNumber).toBe(true)
+    await mock.sync('C:/repos/tt')
+    const latest = await mock.getStatus('C:/repos/tt')
+    expect(latest.revisionNumber).toBe(latest.localRevisionNumber)
+  })
 })
 
 describe('mock status flags', () => {

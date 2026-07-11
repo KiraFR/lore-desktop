@@ -81,6 +81,7 @@ export const tauriApi: LoreApi = {
   commitAll: (repoPath, message, exclude) => invoke<void>('lore_commit', { repoPath, message, exclude }),
   push: (repoPath, onProgress) => invokeWithProgress<void>('lore_push', { repoPath }, onProgress),
   sync: (repoPath, onProgress) => invokeWithProgress<void>('lore_sync', { repoPath }, onProgress),
+  syncToRevision: (repoPath, revision, onProgress) => invokeWithProgress<void>('lore_sync_to', { repoPath, revision }, onProgress),
   pushedLockFiles: (repoPath) => invoke<string[]>('lore_pushed_lock_files', { repoPath }),
   setLock: (repoPath, path, lock) => invoke<void>('lore_set_lock', { repoPath, path, lock }),
   discardFile: (repoPath, path) => invoke<void>('lore_discard_file', { repoPath, path }),

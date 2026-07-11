@@ -14,6 +14,8 @@ export interface StatusResult {
   localAhead: number
   remoteAhead: number
   revisionNumber: number
+  /** The local head's revision number; `revisionNumber < localRevisionNumber` = time-traveled (behind). */
+  localRevisionNumber: number
   /** False when the server can't be reached (offline). */
   remoteAvailable: boolean
   /** False when the stored session is no longer accepted. */
@@ -160,6 +162,8 @@ export interface LoreApi {
   commitAll(repoPath: string, message: string, exclude: string[]): Promise<void>
   push(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>
   sync(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>
+  /** Time-travel the working copy to a revision (hash). Progress ticks stream via onProgress. */
+  syncToRevision(repoPath: string, revision: string, onProgress?: (p: OpProgress) => void): Promise<void>
   /** Files the current user holds locked that are part of the pending push. */
   pushedLockFiles(repoPath: string): Promise<string[]>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
