@@ -63,5 +63,6 @@
   .bad { color: var(--deleted); }
   .mini { margin-left: 6px; padding: 1px 8px; font-size: 11px; }
   .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--panel); color: var(--text-muted); border: 1px solid var(--border); }
-  .chip.merge { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; cursor: pointer; }
+  button.chip { cursor: pointer; }
+  .chip.merge { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 </style>
