@@ -198,6 +198,8 @@ export interface LoreApi {
   /** Repository-revision sizes of the given files (ONE batch `file info` call) — the "old" side of the size delta. */
   fileSizes(repoPath: string, paths: string[]): Promise<Record<string, number>>
   getDiff(repoPath: string, path: string): Promise<DiffLine[]>
+  /** Diff of one file between two revisions (source→target signatures), for the History preview. */
+  getFileDiffAt(repoPath: string, path: string, source: string, target: string): Promise<DiffLine[]>
   /** Commit the working changes except `exclude` (unchecked files stay pending). */
   commitAll(repoPath: string, message: string, exclude: string[]): Promise<void>
   push(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>

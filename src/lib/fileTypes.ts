@@ -19,3 +19,14 @@ export const ext = (p: string): string => {
 export function typeName(p: string): string {
   return TYPES[ext(p)] ?? (ext(p) ? ext(p).toUpperCase() + ' file' : 'File')
 }
+
+const TEXT_DIFF_EXT = new Set([
+  'txt','text','md','markdown','json','xml','yaml','yml','toml','ini','cfg','conf','csv','tsv','log','sql',
+  'c','cc','cxx','cpp','h','hh','hpp','hxx','cs','rs','go','java','kt','rb','php','lua','py','js','jsx','ts','tsx','sh','bat','ps1',
+  'glsl','hlsl','usf','ush','shader','html','css','scss','svg','uproject','uplugin','gitignore','gitattributes','editorconfig',
+])
+
+/** Files whose historical (revision-range) text diff is worth showing. */
+export function isTextDiffable(path: string): boolean {
+  return TEXT_DIFF_EXT.has(ext(path))
+}

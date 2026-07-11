@@ -314,6 +314,16 @@ export const mock: LoreApi = {
       { kind: 'add', text: 'const z = 4', oldLine: null, newLine: 3 },
     ] as DiffLine[]
   },
+  async getFileDiffAt(_repoPath: string, _path: string, _source: string, _target: string) {
+    await delay(160)
+    return [
+      { kind: 'hunk', text: '@@ -1,2 +1,3 @@', oldLine: null, newLine: null },
+      { kind: 'del', text: 'line one', oldLine: 1, newLine: null },
+      { kind: 'context', text: 'line two', oldLine: 2, newLine: 2 },
+      { kind: 'add', text: 'line one changed', oldLine: null, newLine: 1 },
+      { kind: 'add', text: 'line three added', oldLine: null, newLine: 3 },
+    ] as DiffLine[]
+  },
   async commitAll(repoPath: string, message: string, exclude: string[] = []) {
     if (!message.trim()) throw new Error('commit message is required')
     await delay(500)

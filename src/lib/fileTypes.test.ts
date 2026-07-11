@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ext, typeName } from './fileTypes'
+import { ext, typeName, isTextDiffable } from './fileTypes'
 
 describe('ext', () => {
   it('lowercases the extension and handles missing ones', () => {
@@ -17,5 +17,18 @@ describe('typeName', () => {
   it('falls back to "<EXT> file" then "File"', () => {
     expect(typeName('data.xyz')).toBe('XYZ file')
     expect(typeName('LICENSE')).toBe('File')
+  })
+})
+
+describe('isTextDiffable', () => {
+  it('recognizes source and config files as text-diffable', () => {
+    expect(isTextDiffable('Source/Player/PlayerCharacter.cpp')).toBe(true)
+    expect(isTextDiffable('Config/DefaultInput.ini')).toBe(true)
+    expect(isTextDiffable('notes.md')).toBe(true)
+  })
+  it('rejects binary/media assets and extensionless files', () => {
+    expect(isTextDiffable('Content/Maps/Level_01.umap')).toBe(false)
+    expect(isTextDiffable('Audio/sfx.wav')).toBe(false)
+    expect(isTextDiffable('noext')).toBe(false)
   })
 })
