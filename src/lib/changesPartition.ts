@@ -17,9 +17,15 @@ export function partitionByLock(files: ChangedFile[]): ChangesPartition {
   return { committable, lockedByOthers }
 }
 
+/** Case-insensitive substring filter over the text fields `haystack` extracts
+ *  from each item (e.g. path + lock holder); blank query = everything. */
+export function filterByText<T>(items: T[], query: string, haystack: (item: T) => string[]): T[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return items
+  return items.filter((it) => haystack(it).some((s) => s.toLowerCase().includes(q)))
+}
+
 /** Case-insensitive substring filter on the path; blank query = everything. */
 export function filterByQuery(files: ChangedFile[], query: string): ChangedFile[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return files
-  return files.filter((f) => f.path.toLowerCase().includes(q))
+  return filterByText(files, query, (f) => [f.path])
 }
