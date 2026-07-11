@@ -63,7 +63,10 @@
   let sawMerge = false
   $effect(() => {
     const step = externalAbortStep(phase === 'resolving', repo.status?.mergeInProgress, sawMerge)
-    sawMerge = step.saw
+    // Keep the latch when the abort lands mid-action: the busy gate below skips
+    // this run, and reading `busy` here registers it as a dependency — the
+    // effect re-runs when the action ends and the recovery fires then.
+    sawMerge = step.aborted && busy ? true : step.saw
     if (step.aborted && !busy) {
       phase = 'setup'
       conflicts = []
