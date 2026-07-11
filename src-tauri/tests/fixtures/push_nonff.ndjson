@@ -1,0 +1,4 @@
+{"tagName":"branchPush","data":{"remote":"lore://lore.example.com:41337","repository":"019f333af5e073d28bb117ad1596784a","branch":"019f39559d9e7ca19b4335cf699f3fcb","branchName":"feature/test","remoteRevision":"3e78d3c58f9821bfb869cbb5fa23ecfcfbe1c9ab72b62a5f6cdf47f73c90b139","localRevision":"608dc85c8a8d0259a86d00499dbfe6302910c01f4ca218f9ca29f48ef7c81eeb","remoteHistory":2,"localHistory":1,"flagAlreadyPushed":false,"flagDefault":false,"flagLink":false,"flagLayer":false}}
+{"tagName":"log","data":{"level":"error","category":0,"timestamp":1783804818448,"location":"lore_revision::relay","message":"Branch has diverged, sync to merge remote changes"}}
+{"tagName":"error","data":{"errorType":4294967295,"errorInner":"Branch has diverged, sync to merge remote changes"}}
+{"tagName":"complete","data":{"status":1}}

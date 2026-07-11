@@ -407,3 +407,26 @@ serveur/id/nom/description/branche par défaut/créateur/date de création.
 Tout champ absent (ex. `description` vide traité comme présent-mais-vide,
 pas absent) => `None` dans le DTO => ligne masquée (défaut sûr, comme les
 autres DTOs de ce lot).
+
+**Push non-fast-forward** (fixture push_nonff.ndjson, capturée le 2026-07-11 en
+fabriquant la course : second clone temp sur `feature/test` → commit+push distant →
+commit local dans le repo principal → push refusé). Forme constatée : un événement
+`{"tagName":"error","data":{"errorType":4294967295,"errorInner":"Branch has diverged, sync to merge remote changes"}}`
+suivi de `complete status 1` (il y a aussi un event `log` level=error du même message).
+Ce que le frontend reçoit (via `check_ok`, lore.rs:35 → `err.data.to_string()`, clés
+triées alpha par serde_json, PUIS suffixe ` (lore exited with …)` du runner streaming) :
+`{"errorInner":"Branch has diverged, sync to merge remote changes","errorType":4294967295} (lore exited with …)`.
+Sous-chaîne discriminante retenue pour pushErrors.ts : **`Branch has diverged`**
+(jamais un match large — un status seul, un stall ou un launch-fail ne matchent pas).
+`push --fast-forward-merge` : **existe** ("Allow the server to fast-forward merge if
+the target branch head has moved") — MAIS le refus réel est une DIVERGENCE (local ET
+remote ont avancé), pas un simple fast-forward ; le CLI dit lui-même « sync to merge »,
+donc la voie honnête est la chaîne front sync→push (spec item 2 variante 3B), pas le
+flag. Sync de rattrapage sans conflit : **auto-committé** — `sync` émet un
+`revisionCommitRevision` (le merge, rev N+1) et laisse `isLocalAhead:1`, `revisionStaged:0`
+→ prêt à pousser sans commit manuel. ⚠ Constat annexe : après ce merge propre,
+`revisionMerged` reste **non-zéro** (2e parent du commit de merge, permanent tant que
+HEAD est ce merge) — donc `merge_in_progress = revisionMerged != 0` (commands.rs:200)
+est trop large. Le garde de `syncAndPush` s'appuie sur `stagedPending` (revisionStaged
+!= 0), seul discriminant fiable d'un merge NON résolu (cf. status_merge.ndjson : merge
+en conflit → revisionStaged non-zéro + fichiers flagConflictUnresolved).
