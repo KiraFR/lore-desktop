@@ -46,6 +46,7 @@ pub fn run() {
         commands::lore_set_lock,
         commands::lore_locks,
         commands::lore_diff,
+        commands::lore_diff_revs,
         commands::lore_branches,
         commands::lore_switch_branch,
         commands::lore_create_branch,

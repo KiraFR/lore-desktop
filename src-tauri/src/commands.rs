@@ -2474,6 +2474,9 @@ fn parse_diff(patch: &str) -> Vec<DiffLineDto> {
             old_n = o;
             new_n = n;
             out.push(DiffLineDto { kind: "hunk".into(), text: line.to_string(), old_line: None, new_line: None });
+        } else if line.starts_with('\\') {
+            // Unified-diff metadata, e.g. `\ No newline at end of file` — not content.
+            continue;
         } else if let Some(content) = line.strip_prefix('+') {
             out.push(DiffLineDto { kind: "add".into(), text: content.to_string(), old_line: None, new_line: Some(new_n) });
             new_n += 1;
@@ -2510,6 +2513,27 @@ pub async fn lore_diff(repo_path: String, path: String) -> Result<Vec<DiffLineDt
     .await
 }
 
+/// Diff of `<path>` between two revisions (source→target signatures) as
+/// structured lines — the historical diff shown in the History preview.
+#[tauri::command]
+pub async fn lore_diff_revs(repo_path: String, path: String, source: String, target: String) -> Result<Vec<DiffLineDto>, String> {
+    blocking(move || {
+        // Same absolute-path handling as `lore_diff` — `lore diff` resolves a
+        // relative path against the process cwd, not `--repository`.
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy();
+        let events = run_lore(&["diff", &abs_str, "--source", &source, "--target", &target, "--repository", &repo_path])?;
+        let patch = events_with_tag(&events, "fileDiff")
+            .into_iter()
+            .next()
+            .and_then(|d| d.get("patch").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        Ok(parse_diff(&patch))
+    })
+    .await
+}
+
 #[cfg(test)]
 mod diff_tests {
     use super::*;
@@ -2527,6 +2551,19 @@ mod diff_tests {
         assert_eq!(lines[2].kind, "add");
         assert_eq!(lines[2].text, "test notre"); // prefix stripped
         assert_eq!((lines[2].old_line, lines[2].new_line), (None, Some(2)));
+    }
+
+    #[test]
+    fn parses_revision_range_diff_fixture() {
+        let events = crate::lore::parse_events(include_str!("../tests/fixtures/file_diff_revs.ndjson")).unwrap();
+        let patch = events_with_tag(&events, "fileDiff").into_iter().next().unwrap().get("patch").unwrap().as_str().unwrap();
+        let lines = parse_diff(patch);
+        // The captured modify diff: 2 removed lines, 3 added lines, one hunk header,
+        // and NO "\ No newline" bogus lines.
+        assert_eq!(lines.iter().filter(|l| l.kind == "del").count(), 2);
+        assert_eq!(lines.iter().filter(|l| l.kind == "add").count(), 3);
+        assert!(lines.iter().any(|l| l.kind == "hunk"));
+        assert!(lines.iter().all(|l| !l.text.starts_with("\\ No newline")));
     }
 }
 
