@@ -3,6 +3,8 @@
   import { repo } from './repo.svelte'
   import { initialsFor, displayNameFor } from './identity'
   import Icon from './Icon.svelte'
+  import { api } from './api'
+  import { toastError } from './toast'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -21,6 +23,31 @@
     await signOut()
     onclose()
   }
+
+  // null = status not loaded yet (toggle disabled until then).
+  let storeOn = $state<boolean | null>(null)
+
+  $effect(() => {
+    api.sharedStoreStatus()
+      .then((s) => { storeOn = s.autoUse ?? s.exists })
+      .catch(() => { storeOn = null })
+  })
+
+  async function toggleStore() {
+    if (storeOn === null) return
+    const serverUrl = session.config.serverUrl
+    if (!serverUrl) return
+    const target = !storeOn
+    const prev = storeOn
+    storeOn = target // optimistic — revert on failure
+    try {
+      if (target) await api.sharedStoreEnable(serverUrl)
+      else await api.sharedStoreDisable()
+    } catch (e) {
+      storeOn = prev
+      toastError(target ? "Couldn't enable the shared store" : "Couldn't disable the shared store", e)
+    }
+  }
 </script>
 
 <div class="menu">
@@ -36,6 +63,10 @@
     <input id="dn" bind:value={name} placeholder="e.g. Jimmy D." onblur={saveName}
            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveName() } }} />
   </div>
+  <label class="storetoggle">
+    <input type="checkbox" checked={storeOn === true} disabled={storeOn === null || !session.config.serverUrl} onchange={toggleStore} />
+    <span>Use shared store for clones</span>
+  </label>
   <div class="div"></div>
   <button class="action out" onclick={doSignOut} disabled={!!repo.busy}>
     <Icon name="external" size={15} /> Sign out
@@ -57,4 +88,6 @@
   .action:hover:not(:disabled) { background: var(--panel-hover); border: none; }
   .action.out { color: var(--deleted); }
   .action :global(svg) { color: currentColor; }
+  .storetoggle { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
+  .storetoggle input { accent-color: var(--accent); }
 </style>
