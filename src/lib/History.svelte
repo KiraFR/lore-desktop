@@ -295,11 +295,13 @@
       {:else}
         <ul class="fl">
           {#each detailFiles as f (f.path)}
-            <li class:sel={f.path === previewPath} role="button" tabindex="0"
-                onclick={() => (previewPath = toggleFilePath(previewPath, f.path))}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); previewPath = toggleFilePath(previewPath, f.path) } }}
+            <li class:sel={f.path === previewPath}
                 oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
-              <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span>
+              <div class="rowmain" role="button" tabindex="0"
+                   onclick={() => (previewPath = toggleFilePath(previewPath, f.path))}
+                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); previewPath = toggleFilePath(previewPath, f.path) } }}>
+                <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span>
+              </div>
             </li>
           {/each}
         </ul>
@@ -353,9 +355,10 @@
   .fchg { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
   .floading { font-size: 12.5px; padding: 6px 0; }
   .fl { list-style: none; margin: 0; padding: 0; }
-  .fl li { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+  .fl li { margin: 0 -6px; border-radius: 6px; }
   .fl li:hover { background: var(--panel); }
   .fl li.sel { background: var(--accent-soft); }
+  .fl li .rowmain { display: flex; align-items: center; gap: 8px; padding: 5px 6px; font-size: 12.5px; cursor: pointer; }
   .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
   .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }

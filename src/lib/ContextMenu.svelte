@@ -23,7 +23,7 @@
       if (menuEl && !menuEl.contains(e.target as Node)) onclose()
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onclose()
+      if (e.key === 'Escape') { e.stopPropagation(); onclose() }
     }
     document.addEventListener('pointerdown', onDoc)
     document.addEventListener('keydown', onKey)
