@@ -1,0 +1,9 @@
+{"tagName":"branchListBegin","data":{"location":"local"}}
+{"tagName":"branchListEntry","data":{"location":"local","id":"019f39559d9e7ca19b4335cf699f3fcb","name":"feature/test","category":"","latest":"8ff4711d34c27b5834fb4b806d32fa990637eaf57fd735cba91562df830dac9e","stack":[{"branch":"e726318bbc3fd75ac8733a7e030cc35b","revision":"a3e42aeae4e3dd9542c62775c0af8a158f4c1b088b30837872f826817e8e6770"}],"creator":"11111111-2222-4333-8444-555555555555","created":1783373340062,"isCurrent":true,"archived":false}}
+{"tagName":"branchListEntry","data":{"location":"local","id":"e726318bbc3fd75ac8733a7e030cc35b","name":"main","category":"","latest":"fda1937848cb121dc559950b4f712973ab90abfb6ca9a57d375c22293a795dc1","stack":[],"creator":"11111111-2222-4333-8444-555555555555","created":1783270929978,"isCurrent":false,"archived":false}}
+{"tagName":"branchListEnd","data":{"location":"local","count":2}}
+{"tagName":"branchListBegin","data":{"location":"remote"}}
+{"tagName":"branchListEntry","data":{"location":"remote","id":"019f39559d9e7ca19b4335cf699f3fcb","name":"feature/test","category":"","latest":"fe7897ea5eb8f1cf4f7d0048db05fbebffa3a20b86b62322f295014df8455f3e","stack":[{"branch":"e726318bbc3fd75ac8733a7e030cc35b","revision":"a3e42aeae4e3dd9542c62775c0af8a158f4c1b088b30837872f826817e8e6770"}],"creator":"11111111-2222-4333-8444-555555555555","created":1783455139,"isCurrent":false,"archived":false}}
+{"tagName":"branchListEntry","data":{"location":"remote","id":"e726318bbc3fd75ac8733a7e030cc35b","name":"main","category":"","latest":"fda1937848cb121dc559950b4f712973ab90abfb6ca9a57d375c22293a795dc1","stack":[],"creator":"11111111-2222-4333-8444-555555555555","created":1783270930,"isCurrent":false,"archived":false}}
+{"tagName":"branchListEnd","data":{"location":"remote","count":2}}
+{"tagName":"complete","data":{"status":0}}

@@ -249,3 +249,70 @@ un seul événement par status, après les `repositoryStatusFile` — cinq compt
 `adds` / `deletes` / `modifies` / `moves` / `copies`. Le DTO replie
 `modifies + moves + copies` dans `mods` (l'UI colore R/C comme des « modified »).
 Événement absent (CLI plus ancien) ⇒ `summary: None` ⇒ compteurs masqués côté UI.
+
+## `branch list --json` (P4 Item 2 — section Remote, + constat `protected` pour Task 9)
+
+Capturé le 2026-07-11 sur `lore-test-repo` (branches `main` et `feature/test`,
+cette dernière courante avec un commit local non encore poussé). Fixture :
+`branch_list.ndjson`.
+
+**CONSTAT — `location` : chaîne, valeurs `"local"` / `"remote"`** (hypothèse du
+plan confirmée). Deux blocs `branchListBegin`/`branchListEntry`(×N)/`branchListEnd`
+par appel, groupés par location : `location:"local"` d'abord (2 entrées : `main`,
+`feature/test`), PUIS `location:"remote"` (2 entrées, mêmes 2 branches — le repo
+de test a bien les deux poussées côté serveur). **Le bloc remote est présent**
+dans cette capture (pas de cas « absent » à noter ici ; connectivité serveur OK).
+
+**CONSTAT — flag `protected` : ABSENT.** `Select-String -Pattern protect`
+(insensible à la casse) sur toute la fixture ne remonte **aucune** occurrence —
+ni `protected`, ni `protect`, ni variante, dans `branchListEntry` ni ailleurs
+dans le flux. **Task 9 (badge protected) ne peut pas s'appuyer sur un champ natif
+du CLI** : soit la notion n'existe pas côté `lore`, soit elle passe par une
+commande séparée non couverte par cette capture. Tout badge « protected » dans
+l'UI devra venir d'une convention côté app (ex. nom de branche `main`/`master`
+en dur), pas d'un champ `branch list`.
+
+**Champs réels de `branchListEntry`** (plus riches que l'hypothèse du plan, qui
+ne listait que `name`/`latest`/`isCurrent`/`archived`/`location`) :
+- `location` (string, `"local"` / `"remote"`)
+- `id` (uuid string — identifiant **stable** de la branche, pas le nom ; c'est
+  ce qui permet de faire correspondre une même branche entre les deux blocs)
+- `name` (string, ex. `"main"`, `"feature/test"`)
+- `category` (string — vide `""` sur les deux branches de ce repo ; format réel
+  non déterminé par cette capture)
+- `latest` (hash string, tip de la branche à cette location — **diffère entre
+  local et remote** pour une branche pas entièrement synchronisée, voir plus bas)
+- `stack` (array de `{"branch":<id>,"revision":<hash>}` — **absent de
+  l'hypothèse du plan** ; vide `[]` sur `main`, une entrée sur `feature/test`,
+  vraisemblablement la chaîne de branches empilées/parentes)
+- `creator` (uuid string — id utilisateur créateur ; à résoudre via
+  `authUserInfo` comme pour `created-by`/`committed-by` ailleurs)
+- `created` (timestamp — **CONSTAT : unité différente selon `location`**, voir
+  ci-dessous)
+- `isCurrent` (bool — `true` uniquement sur l'entrée **locale** de la branche
+  active ; toujours `false` côté remote, la notion de « current » n'existe pas
+  côté serveur)
+- `archived` (bool)
+
+`branchListEnd` porte aussi `count` (u64, nb d'entrées du bloc) en plus de
+`location`.
+
+**CONSTAT — `created` : résolution différente entre `location:"local"`
+(millisecondes) et `location:"remote"` (secondes).** Sur `main` (déjà poussée,
+`latest` identique des deux côtés) : `created` local = `1783270929978`
+(13 chiffres, epoch ms) vs `created` remote = `1783270930` (10 chiffres, epoch
+s) — `remote ≈ round(local / 1000)`, cohérent avec la **même** révision vue à
+deux résolutions différentes. Sur `feature/test` (commit local non poussé,
+`latest` différent entre les deux blocs), les deux `created` n'ont **aucun**
+rapport arithmétique simple (`1783373340062` local vs `1783455139` remote) —
+normal, ce ne sont pas le même évènement (le remote reflète le dernier push,
+le local le dernier commit local). **Piège pour Tasks 6/9/11** : ne jamais
+comparer/trier/afficher `created` entre les deux blocs sans normaliser l'unité
+(diviser par 1000 côté remote, ou multiplier par 1000 côté local) — sinon
+dates fantaisistes (1970 ou horizon lointain selon le sens de l'erreur).
+
+**Dédup local/remote :** confirmé qu'une branche présente des deux côtés
+(`main`, `feature/test`) apparaît deux fois avec le **même `id`** mais des
+`latest`/`created` potentiellement différents — c'est `id` (pas `name`) qui
+doit servir de clé de dédup/jointure entre les deux blocs pour la Task 6 (le
+plan supposait une dédup par nom).
