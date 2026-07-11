@@ -10,11 +10,25 @@
   import ContextMenu from './ContextMenu.svelte'
   import HistoryFilePreview from './HistoryFilePreview.svelte'
   import { toggleFilePath, selectionAfterCommitChange, isLocalTip } from './historySelection'
+  import { filterCommits } from './historyFilter'
   import type { CommitFile } from './types'
 
   // Commits + selection live in the shared `history` store so leaving and
   // re-entering the History view keeps them (no remount reload / loading flash).
   const commits = $derived(history.commits)
+
+  // Client-side commit filter (P5). Deliberately searches the LOADED commits
+  // only — full-history server search (`lore revision find`) is a future lot
+  // (see docs/superpowers/specs/2026-07-11-lore-desktop-p5-search-design.md).
+  let filterInput = $state('')
+  let query = $state('') // debounced copy of filterInput (150 ms)
+  $effect(() => {
+    const v = filterInput
+    const t = setTimeout(() => (query = v), 150)
+    return () => clearTimeout(t)
+  })
+  const filterActive = $derived(query.trim() !== '')
+  const filtered = $derived(filterCommits(commits, query))
 
   let glistEl = $state<HTMLDivElement>()
   let scrollTop = $state(0)
@@ -235,7 +249,11 @@
 
 <section class="history">
   <div class="leftcol">
-    <div class="ghead">History <span class="cnt">{commits.length.toLocaleString()} commits</span></div>
+    <div class="ghead">History <span class="cnt">{filterActive ? `${filtered.length.toLocaleString()} of ${commits.length.toLocaleString()} loaded commits` : `${commits.length.toLocaleString()} commits`}</span></div>
+    <input class="filter" bind:value={filterInput} placeholder="Filter commits" />
+    {#if filterActive}
+      <p class="hint">Searching loaded commits only — scroll History to load more</p>
+    {/if}
     <div class="glist" bind:this={glistEl} onscroll={onScroll}>
       {#if loading && !commits.length}
         <p class="muted pad">Loading history…</p>
@@ -345,6 +363,8 @@
   .leftcol { width: 400px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
   .ghead { flex: none; padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; }
   .ghead .cnt { color: var(--text-dim); font-size: 11px; }
+  .filter { flex: none; display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
+  .hint { flex: none; margin: -2px 14px 6px; font-size: 11px; color: var(--text-dim); }
   .glist { flex: 1; overflow-y: auto; overflow-x: hidden; }
   .pad { padding: 10px 14px; }
   .viewport { position: relative; }
