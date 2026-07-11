@@ -248,6 +248,18 @@
     if (!filterActive && glistEl.scrollTop + glistEl.clientHeight > rows.length * ROW_H - viewH * 2) loadMoreHistory()
   }
 
+  // « Load more » under an active filter (spec: the button stays reachable at
+  // the bottom of the filtered list; newly loaded commits enter the filter
+  // automatically since `filtered` derives from `commits`). Local in-flight
+  // guard: loadMoreHistory has none, and a double-click would append the same
+  // page twice.
+  let loadingMore = $state(false)
+  async function clickLoadMore() {
+    if (loadingMore) return
+    loadingMore = true
+    try { await loadMoreHistory() } finally { loadingMore = false }
+  }
+
   // A query change re-anchors the list at the top — the previous scroll offset
   // is meaningless against a different row set (also applies when clearing).
   $effect(() => {
@@ -311,6 +323,9 @@
             </div>
           {/each}
         </div>
+      {/if}
+      {#if filterActive && !loading && history.cursor}
+        <button class="loadmore" onclick={clickLoadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button>
       {/if}
     </div>
   </div>
@@ -394,6 +409,7 @@
   .ghead .cnt { color: var(--text-dim); font-size: 11px; }
   .filter { flex: none; display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .hint { flex: none; margin: -2px 14px 6px; font-size: 11px; color: var(--text-dim); }
+  .loadmore { display: block; margin: 10px auto 14px; padding: 5px 16px; font-size: 12px; }
   .glist { flex: 1; overflow-y: auto; overflow-x: hidden; }
   .pad { padding: 10px 14px; }
   .viewport { position: relative; }
