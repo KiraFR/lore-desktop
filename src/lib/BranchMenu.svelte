@@ -1,12 +1,13 @@
 <script lang="ts">
   import { api } from './api'
   import { session } from './session.svelte'
-  import { refreshStatus, refreshBranches, branches } from './repo.svelte'
+  import { refreshStatus, refreshBranches, branches, repo } from './repo.svelte'
   import { setView } from './ui.svelte'
   import { confirmAction } from './confirm'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import { groupBranches } from './branchGrouping'
+  import { formatAheadBehind } from './branchInfoCache'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -18,6 +19,7 @@
   const currentName = $derived(branches.list.find((b) => b.current)?.name ?? 'main')
   const rows = $derived(groupBranches(branches.list, filter))
   const branchCount = $derived(rows.reduce((n, r) => (r.kind === 'branch' ? n + 1 : n), 0))
+  const curAB = $derived(formatAheadBehind({ ahead: repo.status?.localAhead ?? 0, behind: repo.status?.remoteAhead ?? 0 }))
 
   const LANE = ['#3067d4', '#3fb950', '#d29922', '#a371f7', '#ec6a5e']
 
@@ -90,7 +92,7 @@
 
 <div class="menu">
   <input class="search" bind:value={filter} placeholder="Filter branches" />
-  <div class="sec">Branches · {branchCount.toLocaleString()}</div>
+  <div class="sec">Branches · {branchCount.toLocaleString()}{#if curAB} · {currentName} {curAB}{/if}</div>
   <div class="list" bind:this={listEl} onscroll={onListScroll} style="height:{listHeight}px">
     <div class="listvp" style="height:{rows.length * ROW_H}px">
       {#each windowRows as r, k (r.kind === 'header' ? '§' + r.label : r.branch.name)}
