@@ -169,3 +169,76 @@ n'émet **aucun** événement porteur de données, seulement la ligne de fin
 `{"tagName":"complete","data":{"status":0}}` — pas de confirmation du
 nouveau chemin dans le flux, il faut re-interroger `status` ou `instance
 list` séparément pour vérifier l'effet.
+
+## `sync <revision>` / status « behind » (P3 Recovery, Item C)
+
+Vérifié le 2026-07-11 sur `lore-test-repo` (id `019f333af5e073d28bb117ad1596784a`,
+branche `feature/test`) : sync arrière vers la révision N-1 (19, `cccaca367…`)
+depuis la tête locale (20, `8ff4711d…`), capture du status pendant le time
+travel, puis test arbre sale, puis retour propre à la tête.
+
+**Syntaxe réelle :** `lore sync [revision] --repository <path> --json` — un
+seul verbe `sync` (**pas** de variante namespaced `revision sync`), un unique
+argument **positionnel optionnel** qui est un **hash de révision** (complet ou
+partiel — pas un numéro de révision, `--help` ne mentionne que la signature de
+hash). `lore sync --repository <path> --json` **sans** argument = retour à la
+tête (dernière révision locale connue, `isLatest:1`). Un event
+`revisionSyncTarget` ouvre chaque sync : `sourceRevision(Number)` /
+`targetRevision(Number)` / `isLatest` (0/1) / `local` (1) — puis
+`revisionSyncProgress`/`revisionSyncFile` (fichiers touchés par le delta
+seulement, `action:"keep"` ici car contenu identique déjà présent
+localement) et `revisionSyncRevision` en fin de sync (branch/revision/
+revisionNumber/flagMerge/flagConflict).
+
+**CONSTAT — le champ « behind » n'est PAS `isRemoteAhead`/`isLocalAhead`.**
+Ces deux booléens dans `repositoryStatusRevision` comparent la **tête locale**
+(`revisionLocal(Number)`) à la **tête remote connue** (`revisionRemote(Number)`)
+— ils ne bougent **pas** quand on time-travel en interne au working copy et
+restent identiques avant/pendant/après le sync arrière (`isLocalAhead:1`,
+`isRemoteAhead:0` inchangés tout du long dans ce repo, qui a 2 révisions
+locales non poussées au remote — état préexistant du repo de test, sans
+rapport avec le sync). Le signal réel de « je suis synchronisé sur une
+révision passée » est l'écart entre `revision`/`revisionNumber` (position
+courante du working copy, ex. 19) et `revisionLocal`/`revisionLocalNumber`
+(tête locale connue, ex. 20) : `revisionNumber < revisionLocalNumber` ⇒
+le repo est « behind » sa propre tête locale. Voir `status_behind.ndjson`
+(capturé juste après `sync cccaca367…`) : `revision":"cccaca367…"`,
+`revisionNumber":19`, `revisionLocal":"8ff4711d…"`,
+`revisionLocalNumber":20` — `revisionRemote(Number)` (`fe7897ea…`/18) et
+`isLocalAhead`/`isRemoteAhead` sont **inchangés** par rapport au status pris
+avant le sync. **Implication Task 8 :** le chip « behind » doit comparer
+`revisionNumber` à `revisionLocalNumber` (ou tester `revision !=
+revisionLocal`), pas se fier à `isRemoteAhead` qui répond à une question
+différente (retard vis-à-vis du serveur, pas vis-à-vis de sa propre tête
+locale après un sync arrière).
+
+**Scan pendant le time travel :** `status --scan --json` en `status_behind.ndjson`
+ne liste **aucun** `repositoryStatusFile` et `repositoryStatusSummary` reste à
+zéro (`adds/deletes/modifies/moves/copies: 0`) — être positionné sur une
+révision passée n'est **pas** en soi un changement committable, le working
+copy correspond exactement au contenu de la révision 19. Confirme que le chip
+« behind » doit se déclencher sur l'écart de révision (ci-dessus), pas sur la
+présence de fichiers modifiés dans le scan.
+
+**Comportement sur arbre sale : le sync n'est PAS bloqué.** Modifier un
+fichier suivi (`notify-test.txt`, `flagDirty:true`, `modifies:1` au scan) puis
+lancer `sync <rev antérieure>` **réussit silencieusement** (exit 0, pas
+d'erreur, pas besoin de `--force`) : le fichier sale n'apparaît même pas dans
+la liste `revisionSyncFile` du delta (il n'est pas concerné par le diff entre
+les deux révisions) et **conserve son contenu local modifié** après le sync.
+Effet de bord observé dans `repositoryStatusRevision` : `revisionStaged`
+passe de tout-zéro à un hash réel — la modification locale est reportée comme
+un état stagé résiduel sur la nouvelle révision cible (cf. section
+« Merge/staged » ci-dessus sur `revisionStaged`). `lore reset <path
+absolu> --repository <path> --json` restaure le contenu tracké et remet
+`revisionStaged` à zéro. **Implication garde UI :** il n'y a pas de refus
+CLI natif à afficher ; si l'UI veut empêcher un sync arrière sur arbre sale,
+la garde doit être côté application (vérifier `repositoryStatusSummary` avant
+d'autoriser l'action), pas déduite d'un code d'erreur du CLI.
+
+**Retour à la tête + nettoyage :** `sync --repository <path> --json` sans
+argument ramène `revisionNumber` à la tête locale (`isLatest:1`) ;
+`repositoryStatusRevision` redevient alors identique à l'état de départ
+(`revision == revisionLocal`, `revisionStaged` tout-zéro,
+`repositoryStatusSummary` à zéro). Repo de test revérifié propre et à jour
+après ce test (voir rapport de tâche).
