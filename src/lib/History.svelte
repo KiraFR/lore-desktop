@@ -9,7 +9,7 @@
   import Icon from './Icon.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HistoryFilePreview from './HistoryFilePreview.svelte'
-  import { toggleFilePath, selectionAfterCommitChange, isLocalTip } from './historySelection'
+  import { toggleFilePath, selectionAfterCommitChange, selectionAfterFilter, isLocalTip } from './historySelection'
   import { filterCommits } from './historyFilter'
   import type { CommitFile } from './types'
 
@@ -29,6 +29,15 @@
   })
   const filterActive = $derived(query.trim() !== '')
   const filtered = $derived(filterCommits(commits, query))
+
+  // Selection survives filtering while the commit stays visible, resets
+  // otherwise (spec — pattern selectionAfterCommitChange). Guarded write so
+  // the effect settles instead of looping.
+  $effect(() => {
+    if (!filterActive) return
+    const next = selectionAfterFilter(history.selectedId, filtered)
+    if (next !== history.selectedId) history.selectedId = next
+  })
 
   let glistEl = $state<HTMLDivElement>()
   let scrollTop = $state(0)
@@ -265,7 +274,8 @@
 <section class="history">
   <div class="leftcol">
     <div class="ghead">History <span class="cnt">{filterActive ? `${filtered.length.toLocaleString()} of ${commits.length.toLocaleString()} loaded commits` : `${commits.length.toLocaleString()} commits`}</span></div>
-    <input class="filter" bind:value={filterInput} placeholder="Filter commits" />
+    <input class="filter" bind:value={filterInput} placeholder="Filter commits"
+           onkeydown={(e) => { if (e.key === 'Escape') { filterInput = ''; query = '' } }} />
     {#if filterActive}
       <p class="hint">Searching loaded commits only — scroll History to load more</p>
     {/if}
