@@ -87,3 +87,32 @@ partagent aucun nom commun sauf le **préfixe `bytes…`** — `op_progress_from
 (commands.rs) utilise une allow-list explicite des trois tags + une recherche
 de champ à plusieurs candidats (`count.bytesTransferred`/`count.bytesTotal`,
 `bytesTransferred`/`bytesTotal`, `bytesUpdate`/`bytesUpdateTotal`).
+
+**Sidecar « theirs » d'un merge conflictuel** (vérifié le 2026-07-11 sur un merge réel
+`lore-test-repo`, `feature/test` ← `p2-theirs-src`, binaire PNG + texte README.md) :
+pendant `branch merge start`, le CLI matérialise **trois** sidecars par fichier texte
+en conflit à côté de l'original — `<nom>~base` (version de base commune), `<nom>~mine`
+(version locale résolue, sans marqueurs) et `<nom>~theirs` (version entrante résolue,
+sans marqueurs), ex. `README.md~base`, `README.md~mine`, `README.md~theirs`. Pour un
+**binaire** en conflit (`p2-theirs-test.png`), seuls `~base` et `~theirs` apparaissent —
+**pas de `~mine`** (le fichier de travail original tient déjà lieu de "mine"). Les trois
+sidecars sont exclus du scan (`status --scan --json` les rapporte en `filterExclude`,
+`reason:0` — ils ne portent jamais leur propre `flagConflict`) ; seul le fichier de base
+(`README.md`, `p2-theirs-test.png`) porte `flagConflict:true` / `flagConflictUnresolved:true`
+dans `repositoryStatusFile`.
+
+Le fichier de travail du texte en conflit contient directement des marqueurs de
+conflit style git : `<<<<<<< ours` / `||||||| original` / `=======` / `>>>>>>> theirs`.
+`lore diff <abs README.md> --json` pendant le merge renvoie un `fileDiff` dont le
+`patch` est un diff unifié entre la révision de base committée (`README.md@20`) et
+ce fichier de travail marqué — le patch contient donc littéralement les lignes
+`<<<<<<< ours` / `||||||| original` / `=======` / `>>>>>>> theirs` en plus des lignes
+ajoutées de chaque côté (pas un diff mine-vs-base propre). Pour le **binaire** en
+conflit, `lore diff <abs p2-theirs-test.png> --json` ne renvoie **aucun** événement
+`fileDiff` (juste `complete`, status 0) — pas de patch pour un binaire, cohérent avec
+le fallback icône-seule déjà prévu pour la Task 17.
+
+`branch merge abort` supprime les trois sidecars et restaure l'état pré-merge ;
+`branch archive p2-theirs-src` retire la branche de test de `branch list` ; après
+abort + archive, `status --scan --json` ne rapporte plus aucun `flagConflict` ni
+aucune trace `~base`/`~mine`/`~theirs`.
