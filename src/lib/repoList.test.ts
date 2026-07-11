@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { repoName, promoteRepo, removeRepoPath, nextCurrentRepo, filterRepos } from './repoList'
+import { repoName, promoteRepo, removeRepoPath, replaceRepoPath, nextCurrentRepo, filterRepos } from './repoList'
 
 describe('repoName', () => {
   it('returns the folder basename for Windows paths', () => {
@@ -31,6 +31,18 @@ describe('removeRepoPath', () => {
   })
   it('is a no-op for an unknown path', () => {
     expect(removeRepoPath(['a'], 'zzz')).toEqual(['a'])
+  })
+})
+
+describe('replaceRepoPath', () => {
+  it('swaps the old path for the new one in place, preserving order', () => {
+    expect(replaceRepoPath(['a', 'b', 'c'], 'b', 'B')).toEqual(['a', 'B', 'c'])
+  })
+  it('dedups when the new path already exists in the list', () => {
+    expect(replaceRepoPath(['a', 'b', 'c'], 'c', 'a')).toEqual(['a', 'b'])
+  })
+  it('is a no-op when the old path is absent', () => {
+    expect(replaceRepoPath(['a', 'b'], 'zzz', 'c')).toEqual(['a', 'b'])
   })
 })
 

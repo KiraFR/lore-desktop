@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { session, bootstrap, loadIdentity } from './lib/session.svelte'
+  import { session, bootstrap, loadIdentity, clearCurrentRepo } from './lib/session.svelte'
   import { watchRepo } from './lib/notifications.svelte'
   import { repo, refreshStatus, refreshHistory } from './lib/repo.svelte'
+  import { checkRepoHealth, missingRepoPaths } from './lib/repoHealth.svelte'
+  import { repoName } from './lib/repoList'
+  import { toastInfo } from './lib/toast'
   import { ui, setView } from './lib/ui.svelte'
   import SignIn from './lib/SignIn.svelte'
   import TitleBar from './lib/TitleBar.svelte'
@@ -43,6 +46,15 @@
     refreshStatus()
     loadIdentity()
     refreshHistory(true)
+    // Re-probe every known repo's folder; if the OPEN one has vanished, fall
+    // back to the picker (it stays in the list to be relocated from there).
+    checkRepoHealth().then(() => {
+      const cur = session.config.currentRepo
+      if (cur && missingRepoPaths.has(cur)) {
+        clearCurrentRepo()
+        toastInfo(`${repoName(cur)} is missing — locate it from the repository list`)
+      }
+    })
   })
 
   // Live server events (teammate pushes, lock changes) for the open repo.

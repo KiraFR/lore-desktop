@@ -15,6 +15,13 @@ export function removeRepoPath(list: string[], path: string): string[] {
   return list.filter((r) => r !== path)
 }
 
+/** Swap a repo path for its new location (after a move), keeping list order.
+ *  Dedups if `newPath` was already present, so the list never gains a twin. */
+export function replaceRepoPath(list: string[], oldPath: string, newPath: string): string[] {
+  const out = list.map((p) => (p === oldPath ? newPath : p))
+  return out.filter((p, i) => out.indexOf(p) === i)
+}
+
 /** Current repo after removing `removed`: unchanged unless it *was* current, then the most recent remaining repo (or null). */
 export function nextCurrentRepo(current: string | null, removed: string, remaining: string[]): string | null {
   return current === removed ? (remaining[0] ?? null) : current

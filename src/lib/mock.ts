@@ -394,7 +394,8 @@ export const mock: LoreApi = {
   },
   async pathExists(path: string) {
     // Dev lever: localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/x']))
-    const missing: string[] = JSON.parse(localStorage.getItem('loredesktop.mock.missing') ?? '[]')
+    let missing: string[] = []
+    try { missing = JSON.parse(localStorage.getItem('loredesktop.mock.missing') ?? '[]') } catch { /* corrupt lever → nothing missing */ }
     return !missing.includes(path)
   },
   async updateRepoPath(_newPath: string) {

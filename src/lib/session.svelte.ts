@@ -1,6 +1,6 @@
 import { api } from './api'
 import { toastError } from './toast'
-import { promoteRepo, removeRepoPath, nextCurrentRepo } from './repoList'
+import { promoteRepo, removeRepoPath, replaceRepoPath, nextCurrentRepo } from './repoList'
 import type { AppConfig, Identity } from './types'
 
 /** The studio's Lore server; used as the default when no server is stored yet. */
@@ -57,6 +57,24 @@ export async function removeRepo(repoPath: string) {
     ...session.config,
     currentRepo: nextCurrentRepo(session.config.currentRepo, repoPath, recent),
     recentRepos: recent,
+  }
+  await api.saveConfig(session.config)
+}
+
+/** Drop back to the repo picker (the current repo's folder has vanished). The
+ *  repo stays in the known list so it can be relocated from the switcher. */
+export async function clearCurrentRepo() {
+  session.config = { ...session.config, currentRepo: null }
+  await api.saveConfig(session.config)
+}
+
+/** Point a known repo at its new folder after a move: swap the path in the list
+ *  (dedup) and follow it with `currentRepo` if that repo was the open one. */
+export async function relocateRepo(oldPath: string, newPath: string) {
+  session.config = {
+    ...session.config,
+    currentRepo: session.config.currentRepo === oldPath ? newPath : session.config.currentRepo,
+    recentRepos: replaceRepoPath(session.config.recentRepos, oldPath, newPath),
   }
   await api.saveConfig(session.config)
 }

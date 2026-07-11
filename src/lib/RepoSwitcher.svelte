@@ -1,9 +1,10 @@
 <script lang="ts">
   import { api } from './api'
-  import { session, selectRepo, removeRepo } from './session.svelte'
+  import { session, selectRepo, removeRepo, relocateRepo } from './session.svelte'
   import { addExistingRepo, cloneServerRepo } from './repoActions'
   import { filterRepos, repoName } from './repoList'
-  import { toastError } from './toast'
+  import { missingRepoPaths } from './repoHealth.svelte'
+  import { toastError, toastInfo } from './toast'
   import { opProgress } from './opProgress.svelte'
   import { pct, cloneProgressLabel, cloneInFlight } from './progress'
   import Icon from './Icon.svelte'
@@ -26,6 +27,27 @@
     if (busy) return
     if (path !== session.config.currentRepo) await selectRepo(path)
     onclose()
+  }
+
+  // Re-point a moved repo: pick its new folder, prove it answers, then swap the
+  // path in the known list (and current, if it was open). The row un-dims once
+  // it's no longer flagged missing.
+  async function locate(oldPath: string) {
+    if (busy) return
+    const parent = await api.pickFolder()
+    if (!parent) return
+    busy = `locate:${oldPath}`
+    try {
+      await api.updateRepoPath(parent)
+      await api.getStatus(parent) // proof of life: the folder answers as a repo
+      await relocateRepo(oldPath, parent)
+      missingRepoPaths.delete(oldPath)
+      toastInfo('Repository relocated')
+    } catch (e) {
+      toastError("That folder doesn't answer as this repository", e)
+    } finally {
+      busy = ''
+    }
   }
 
   async function onAddExisting() {
@@ -87,18 +109,28 @@
     {/if}
     <div class="list">
       {#each shown as path (path)}
-        <div class="rowwrap">
+        {@const missing = missingRepoPaths.has(path)}
+        <div class="rowwrap" class:missing>
           <button class="item" class:cur={path === session.config.currentRepo}
-                  onclick={() => switchTo(path)} disabled={!!busy}>
+                  onclick={() => switchTo(path)} disabled={!!busy || missing}
+                  title={missing ? 'This folder is missing — use Locate' : undefined}>
             <Icon name="folder" size={15} />
             <span class="meta">
               <span class="rn">{repoName(path)}</span>
               <span class="rp">{path}</span>
             </span>
-            {#if path === session.config.currentRepo}<Icon name="check" size={14} />{/if}
+            {#if missing}<span class="badge">Missing</span>
+            {:else if path === session.config.currentRepo}<Icon name="check" size={14} />{/if}
           </button>
-          <button class="rm" title="Remove from list (files stay on disk)"
-                  onclick={() => removeRepo(path)}>×</button>
+          {#if missing}
+            <button class="locate" title="Point this repository at its new folder"
+                    onclick={() => locate(path)} disabled={!!busy}>
+              {busy === `locate:${path}` ? 'Locating…' : 'Locate…'}
+            </button>
+          {:else}
+            <button class="rm" title="Remove from list (files stay on disk)"
+                    onclick={() => removeRepo(path)}>×</button>
+          {/if}
         </div>
       {/each}
     </div>
@@ -157,6 +189,10 @@
   .rm { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); display: none; width: 20px; height: 20px; padding: 0; line-height: 1; font-size: 14px; color: var(--text-muted); background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
   .rowwrap:hover .rm { display: block; }
   .rm:hover { color: var(--text); background: var(--panel-hover); }
+  .rowwrap.missing .item { opacity: .6; }
+  .badge { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; background: var(--warn-bg); color: var(--warn-text); }
+  .locate { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); padding: 3px 8px; font-size: 11px; color: var(--warn-text); background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
+  .locate:hover:not(:disabled) { background: var(--panel-hover); }
   .action { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; background: transparent; border: none; border-radius: 0; box-shadow: none; color: var(--text); font-size: 12.5px; text-align: left; }
   .action:hover { background: var(--panel-hover); border: none; }
   .action :global(svg) { color: var(--text-muted); }
