@@ -361,3 +361,49 @@ exact (`revisionLocalNumber`/`revisionRemoteNumber` + `isLocalAhead`/
 `repositoryStatusRevision` (`status --json`, cf. section plus haut) — Tasks
 12 et 14 annulées, Task 13 réduite à `formatAheadBehind`, Task 15 affiche
 l'ahead/behind de la seule branche courante dans l'en-tête du menu.
+
+## `repository info --json` (P4 Item 5 — panneau « About repository »)
+
+Capturé le 2026-07-11 sur `lore-test-repo` (`lore repository info --repository
+<path> --json`, exit 0 dès le premier essai — pas de repli `--help` nécessaire).
+Fixture : `repo_info.ndjson`.
+
+**CONSTAT — tag `repositoryData`, PAS `repositoryInfo`** (hypothèse du plan
+infirmée). Un seul événement de données par appel, suivi de `complete` —
+même forme que `branchInfo` (pas de begin/end/entry).
+
+**Champs réels** (aucun `size` ni compte de révisions — hypothèses du plan
+infirmées, ces deux notions sont absentes de la réponse) :
+- `remoteUrl` (string) — URL du serveur, ex. `"lore://lore.example.com:41337"`.
+- `id` (string, hex 32) — id du repo, **identique** au `id` déjà vu dans
+  `repositoryStatusRevision`/`repositoryStatusFile`/autres fixtures pour ce
+  même repo de test (`019f333af5e073d28bb117ad1596784a`).
+- `name` (string) — nom du repo, ex. `"desktoptest1"`.
+- `description` (string) — vide (`""`) sur ce repo de test ; format non
+  déterminé au-delà de « chaîne, potentiellement vide ».
+- `defaultBranch` (string, hex 32) — **pas un hash de révision : c'est le
+  `id` de branche**, vérifié identique au `id` de l'entrée `"main"` dans
+  `branch_list.ndjson` (`e726318bbc3fd75ac8733a7e030cc35b`). Nécessite un
+  lookup via `branch list`/`branch info` pour résoudre le nom affichable
+  (déjà couvert par `defaultBranchName` ci-dessous, donc lookup inutile en
+  pratique pour l'affichage seul).
+- `defaultBranchName` (string) — nom affichable direct, ex. `"main"`.
+- `creator` (uuid string) — id utilisateur créateur du repo, **même uuid**
+  que le `creator` des branches de ce repo dans `branch_list.ndjson` /
+  `branch_info.ndjson` ; résoluble en nom via `authUserInfo` comme ailleurs.
+- `created` (number, epoch **secondes**, 10 chiffres) — confirmé par
+  comparaison exacte avec le `created` de l'entrée remote `"main"` dans
+  `branch_list.ndjson` (`1783270930` des deux côtés, même repo/branche) :
+  même résolution que `location:"remote"` dans `branch list`, pas la
+  résolution milliseconde de `location:"local"`.
+
+**Impact Tasks 17-19 :** `RepositoryInfoDto` porte
+`{ remote_url, id, name, description, default_branch_name, creator, created }`
+(option `default_branch` id brut aussi disponible mais redondant avec
+`default_branch_name` pour l'affichage). **Pas de champ taille/poids du
+repo, pas de compte de révisions** — ces deux lignes envisagées pour le
+panneau About sont annulées faute de source CLI ; le panneau se limite à
+serveur/id/nom/description/branche par défaut/créateur/date de création.
+Tout champ absent (ex. `description` vide traité comme présent-mais-vide,
+pas absent) => `None` dans le DTO => ligne masquée (défaut sûr, comme les
+autres DTOs de ce lot).
