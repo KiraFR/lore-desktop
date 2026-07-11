@@ -163,6 +163,13 @@ describe('mock api', () => {
     const a = await mock.getPreview('C:/repos/game', 'Audio/sfx_hit.wav~theirs')
     expect(a.kind).toBe('audio')
   })
+
+  it('pathExists honours the missing-repos dev lever', async () => {
+    localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/gone']))
+    expect(await mock.pathExists('C:/repos/gone')).toBe(false)
+    expect(await mock.pathExists('C:/repos/game')).toBe(true)
+    localStorage.removeItem('loredesktop.mock.missing')
+  })
 })
 
 describe('mock.fileSizes', () => {

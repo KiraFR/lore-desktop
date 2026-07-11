@@ -392,6 +392,14 @@ export const mock: LoreApi = {
   async openPath(_absPath: string) {
     // No OS shell in the browser — parity no-op.
   },
+  async pathExists(path: string) {
+    // Dev lever: localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/x']))
+    const missing: string[] = JSON.parse(localStorage.getItem('loredesktop.mock.missing') ?? '[]')
+    return !missing.includes(path)
+  },
+  async updateRepoPath(_newPath: string) {
+    await delay(300)
+  },
   async loadConfig() {
     await delay(60)
     const raw = localStorage.getItem(CONFIG_KEY)

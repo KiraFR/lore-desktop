@@ -195,6 +195,10 @@ export interface LoreApi {
   revealPath(absPath: string): Promise<void>
   /** Open the file with its default application. */
   openPath(absPath: string): Promise<void>
+  /** Does this directory still exist on disk? Drives the "Missing" repo state. */
+  pathExists(path: string): Promise<boolean>
+  /** Re-register a repository after its folder moved; resolves when the new path answers a status. */
+  updateRepoPath(newPath: string): Promise<void>
   loadConfig(): Promise<AppConfig>
   saveConfig(config: AppConfig): Promise<void>
 }
