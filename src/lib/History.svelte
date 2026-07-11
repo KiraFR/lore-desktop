@@ -8,6 +8,8 @@
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import ContextMenu from './ContextMenu.svelte'
+  import HistoryFilePreview from './HistoryFilePreview.svelte'
+  import { toggleFilePath, selectionAfterCommitChange, isLocalTip } from './historySelection'
   import type { CommitFile } from './types'
 
   // Commits + selection live in the shared `history` store so leaving and
@@ -28,12 +30,18 @@
   let detailError = $state(false)
   let lastDetailId = ''
 
+  // Selected commit-file path (opens the preview panel). Local state, NOT a
+  // global store: it resets on commit change and evaporates on view leave.
+  let previewPath = $state<string | null>(null)
+  const previewFile = $derived(detailFiles.find((f) => f.path === previewPath) ?? null)
+
   $effect(() => {
     const c = selected
     const repoPath = session.config.currentRepo
-    if (!c || !repoPath) { detailFiles = []; detailLoading = false; detailError = false; lastDetailId = ''; return }
+    if (!c || !repoPath) { detailFiles = []; detailLoading = false; detailError = false; lastDetailId = ''; previewPath = null; return }
     const sameId = c.id === lastDetailId
     lastDetailId = c.id
+    previewPath = selectionAfterCommitChange(sameId, previewPath)
     if (!sameId) { detailLoading = true; detailFiles = []; editing = false }
     detailError = false
     const parent = c.parents[0] ?? ''
@@ -42,6 +50,17 @@
       .then((files) => { if (selected?.id === c.id) detailFiles = files })
       .catch(() => { if (selected?.id === c.id) detailError = true })
       .finally(() => { if (selected?.id === c.id) detailLoading = false })
+  })
+
+  // Escape closes the preview panel — unless focus is in a text input (the
+  // commit-message editor already binds Escape to cancel).
+  $effect(() => {
+    if (previewPath === null) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) previewPath = null
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   })
 
   // Queue row thumbnails for the selected commit's files (working-copy content).
@@ -276,7 +295,12 @@
       {:else}
         <ul class="fl">
           {#each detailFiles as f (f.path)}
-            <li oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}><span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span></li>
+            <li class:sel={f.path === previewPath} role="button" tabindex="0"
+                onclick={() => (previewPath = toggleFilePath(previewPath, f.path))}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); previewPath = toggleFilePath(previewPath, f.path) } }}
+                oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
+              <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>{#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}<span class="path"><span class="fdir">{dir(f.path)}</span>{base(f.path)}</span>
+            </li>
           {/each}
         </ul>
       {/if}
@@ -284,6 +308,11 @@
       <div class="empty muted"><p>Select a commit.</p></div>
     {/if}
   </div>
+
+  {#if previewFile && selected}
+    <HistoryFilePreview file={previewFile} isTip={isLocalTip(selected.id, commits)}
+                        onclose={() => (previewPath = null)} />
+  {/if}
 
   {#if ctxMenu}
     <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.path)} onclose={() => (ctxMenu = null)} />
@@ -324,7 +353,9 @@
   .fchg { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
   .floading { font-size: 12.5px; padding: 6px 0; }
   .fl { list-style: none; margin: 0; padding: 0; }
-  .fl li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+  .fl li { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+  .fl li:hover { background: var(--panel); }
+  .fl li.sel { background: var(--accent-soft); }
   .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
   .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }
