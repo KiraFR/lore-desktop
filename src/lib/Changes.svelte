@@ -4,6 +4,7 @@
   import { session } from './session.svelte'
   import { repo, commit, setLock, discardFile } from './repo.svelte'
   import { chipFor } from './statusChip'
+  import { summaryParts } from './statusSummary'
   import { composeCommitMessage } from './commitMessage'
   import { formatDelta } from './sizeFormat'
   import { partitionByLock, filterByQuery } from './changesPartition'
@@ -34,6 +35,7 @@
   const shownLocked = $derived(filterByQuery(parts.lockedByOthers, filter))
   const shownCount = $derived(shownCommittable.length + shownLocked.length)
   const branch = $derived(repo.status?.branch ?? 'main')
+  const summary = $derived(summaryParts(repo.status?.summary))
   const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
   const behind = $derived(chipFor(repo.status)?.kind === 'behind')
 
@@ -112,7 +114,14 @@
 </script>
 
 <section class="changes">
-  <div class="colhead">Changes <span class="n">{filter.trim() ? `${shownCount} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span></div>
+  <div class="colhead">Changes
+    <span class="n">{filter.trim() ? `${shownCount} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span>
+    {#if summary.length > 0}
+      <span class="sum" aria-label="Change counters">
+        {#each summary as p (p.cls)}<span class="p {p.cls}">{p.text}</span>{/each}
+      </span>
+    {/if}
+  </div>
 
   <input class="filter" bind:value={filter} placeholder="Filter files" />
 
@@ -193,6 +202,11 @@
   .changes { display: flex; flex-direction: column; width: 320px; flex-shrink: 0; overflow: hidden; border-right: 1px solid var(--border); }
   .colhead { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
   .colhead .n { color: var(--text-dim); font-size: 12px; margin-left: 4px; }
+  .sum { margin-left: 6px; font-size: 11px; font-family: var(--font-mono); }
+  .sum .p { margin-right: 5px; }
+  .sum .added { color: var(--added); }
+  .sum .modified { color: var(--modified); }
+  .sum .deleted { color: var(--deleted); }
   .filter { display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .pad { padding: 8px 12px; }
   .filelist { flex: 1; overflow: auto; }
