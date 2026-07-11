@@ -255,3 +255,15 @@ describe('mock push non-fast-forward lever', () => {
     await expect(mock.push('C:/repos/nff')).resolves.toBeUndefined()
   })
 })
+
+describe('mock shared store', () => {
+  it('status flips with enable/disable', async () => {
+    expect((await mock.sharedStoreStatus()).exists).toBe(false)
+    await mock.sharedStoreEnable('lore://demo:41337')
+    const on = await mock.sharedStoreStatus()
+    expect(on.exists).toBe(true)
+    expect(on.autoUse).toBe(true)
+    await mock.sharedStoreDisable()
+    expect((await mock.sharedStoreStatus()).exists).toBe(false)
+  })
+})

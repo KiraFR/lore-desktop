@@ -73,6 +73,13 @@ export interface RepoEntry {
   name: string
 }
 
+export interface SharedStoreStatus {
+  exists: boolean
+  path: string | null
+  /** Global "use automatically for clones" flag (when the CLI reports it). */
+  autoUse?: boolean
+}
+
 /** Fields of `lore repository info` — all optional: an absent field hides its row. */
 export interface RepositoryInfo {
   id?: string
@@ -179,6 +186,12 @@ export interface LoreApi {
   getFileHistory(repoPath: string, path: string): Promise<FileRevision[]>
   /** Clone <serverUrl>/<repoId> into <destParent>/<repoName>; returns the created path. Progress ticks stream via onProgress. */
   cloneRepo(serverUrl: string, repoId: string, repoName: string, destParent: string, onProgress?: (p: OpProgress) => void): Promise<string>
+  /** Whether a shared object store exists on this machine (and the global auto-use flag). */
+  sharedStoreStatus(): Promise<SharedStoreStatus>
+  /** Create the per-remote store for `serverUrl` if needed, then enable global auto-use. */
+  sharedStoreEnable(serverUrl: string): Promise<void>
+  /** Turn off global auto-use (the store is kept). */
+  sharedStoreDisable(): Promise<void>
   getStatus(repoPath: string): Promise<StatusResult>
   /** Repository-revision sizes of the given files (ONE batch `file info` call) — the "old" side of the size delta. */
   fileSizes(repoPath: string, paths: string[]): Promise<Record<string, number>>

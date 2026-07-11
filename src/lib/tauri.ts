@@ -2,7 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { mock } from './mock'
-import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, StatusResult } from './types'
+import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, SharedStoreStatus, StatusResult } from './types'
 
 type WireProgress = { opId: string; kind: string; done: number; total?: number; unit?: 'bytes' | 'files' }
 
@@ -77,6 +77,9 @@ export const tauriApi: LoreApi = {
   },
   cloneRepo: (serverUrl, repoId, repoName, destParent, onProgress) =>
     invokeWithProgress<string>('lore_clone', { serverUrl, repoId, repoName, destParent }, onProgress),
+  sharedStoreStatus: () => invoke<SharedStoreStatus>('lore_shared_store_status'),
+  sharedStoreEnable: (serverUrl) => invoke<void>('lore_shared_store_enable', { serverUrl }),
+  sharedStoreDisable: () => invoke<void>('lore_shared_store_disable'),
   loadConfig: () => invoke<AppConfig>('config_load'),
   saveConfig: (config) => invoke<void>('config_save', { config }),
   commitAll: (repoPath, message, exclude) => invoke<void>('lore_commit', { repoPath, message, exclude }),

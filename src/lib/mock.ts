@@ -36,6 +36,10 @@ const AUTH_KEY = 'loredesktop.signedin'
 // (the remote is caught up).
 const PUSH_NONFF_KEY = 'loredesktop.mock.pushNonFF'
 
+// Dev lever: simulate the global "use shared store" toggle (AvatarMenu) —
+// `localStorage.setItem('loredesktop.mock.sharedStore', '1')` in the devtools.
+const SHARED_STORE_KEY = 'loredesktop.mock.sharedStore'
+
 const FAKE_REPOS: RepoEntry[] = [
   { id: '019f2e14006f7870a7b27df367c78b72', name: 'game-main' },
   { id: '019f2e1577257382bc89c5a28e3306cb', name: 'game-assets' },
@@ -252,6 +256,19 @@ export const mock: LoreApi = {
       onProgress?.({ done: Math.round((total * i) / 12), total, unit: 'bytes' })
     }
     return `${destParent}/${repoName}`
+  },
+  async sharedStoreStatus() {
+    await delay(120)
+    const on = localStorage.getItem(SHARED_STORE_KEY) === '1'
+    return { exists: on, path: on ? 'C:/Users/jimmy/AppData/Local/Epic Games/lore/data/lore.example.com_41337/shared_store' : null, autoUse: on }
+  },
+  async sharedStoreEnable(_serverUrl: string) {
+    await delay(200)
+    localStorage.setItem(SHARED_STORE_KEY, '1')
+  },
+  async sharedStoreDisable() {
+    await delay(200)
+    localStorage.removeItem(SHARED_STORE_KEY)
   },
   async getStatus(repoPath: string) {
     await delay(250)
