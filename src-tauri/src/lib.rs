@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod job;
 mod lore;
 mod notifications;
 mod preview;
@@ -16,6 +17,11 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      // Kill switch for the lore sidecars on ANY app death (P1 finding: hard
+      // kill leaves `lore notification subscribe` orphans). Non-fatal on error.
+      if let Err(e) = crate::job::init() {
+          log::warn!("job object init failed — sidecars may outlive a hard kill: {e}");
       }
       Ok(())
     })

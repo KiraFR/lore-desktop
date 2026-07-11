@@ -34,5 +34,8 @@ zstd = "0.13.3"
 # Read-only 7z in the app; the writer ("compress") is only pulled in for tests.
 sevenz-rust2 = { version = "0.7.0", default-features = false }
 
+[target.'cfg(windows)'.dependencies]
+win32job = "2"
+
 [dev-dependencies]
 sevenz-rust2 = { version = "0.7.0", features = ["compress"] }
