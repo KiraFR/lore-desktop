@@ -242,3 +242,10 @@ argument ramène `revisionNumber` à la tête locale (`isLatest:1`) ;
 (`revision == revisionLocal`, `revisionStaged` tout-zéro,
 `repositoryStatusSummary` à zéro). Repo de test revérifié propre et à jour
 après ce test (voir rapport de tâche).
+
+
+**`repositoryStatusSummary`** (déjà présent dans status.ndjson, constaté au lot P4) :
+un seul événement par status, après les `repositoryStatusFile` — cinq compteurs u64
+`adds` / `deletes` / `modifies` / `moves` / `copies`. Le DTO replie
+`modifies + moves + copies` dans `mods` (l'UI colore R/C comme des « modified »).
+Événement absent (CLI plus ancien) ⇒ `summary: None` ⇒ compteurs masqués côté UI.
