@@ -146,6 +146,19 @@ describe('mock api', () => {
     expect(d.some((l) => l.kind === 'add')).toBe(true)
     expect(d[0]).toHaveProperty('text')
   })
+
+  it('mergeStart raises binary AND text conflicts', async () => {
+    await mock.mergeStart('C:/repos/mixed', 'feature/loot')
+    const conflicts = await mock.mergeConflicts('C:/repos/mixed')
+    expect(conflicts.some((c) => c.isBinary)).toBe(true)
+    expect(conflicts.some((c) => !c.isBinary)).toBe(true)
+    await mock.mergeAbort('C:/repos/mixed')
+  })
+
+  it('getPreview serves a ~theirs sidecar as its base type', async () => {
+    const p = await mock.getPreview('C:/repos/game', 'Content/UI/T_Icon_Sword.png~theirs')
+    expect(p.kind).toBe('image')
+  })
 })
 
 describe('mock.fileSizes', () => {

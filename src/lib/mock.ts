@@ -1,4 +1,4 @@
-import { isPreviewableImage } from './previewKind'
+import { isPreviewableImage, stripTheirsSuffix } from './previewKind'
 import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, StatusResult } from './types'
 
 /** Small 440 Hz sine burst with decay (~0.5 s) so the mock waveform has a visible shape. */
@@ -198,6 +198,9 @@ export const mock: LoreApi = {
   },
   async getPreview(_repoPath: string, path: string) {
     await delay(200)
+    // A merge's ~theirs sidecar previews like its base file (dev parity with
+    // preview_ext in preview.rs).
+    path = stripTheirsSuffix(path)
     if (PREVIEW_AUDIO_RE.test(path)) return { kind: 'audio', url: mockWavDataUrl() } as PreviewData
     if (PREVIEW_MODEL_RE.test(path)) {
       // Only .obj carries a payload (a tiny cube — OBJ is plain text); other
@@ -364,6 +367,7 @@ export const mock: LoreApi = {
     mergeConflictState = [
       { path: 'Content/Environment/T_Cliff_D.uasset', isBinary: true, unresolved: true },
       { path: 'Content/Maps/Arena.umap', isBinary: true, unresolved: true },
+      { path: 'Source/Player/PlayerCharacter.cpp', isBinary: false, unresolved: true },
     ]
   },
   async mergeConflicts(_repoPath: string) {
