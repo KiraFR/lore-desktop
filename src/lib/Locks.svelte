@@ -6,6 +6,7 @@
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import ContextMenu from './ContextMenu.svelte'
+  import { filterByText } from './changesPartition'
 
   $effect(() => { session.config.currentRepo; refreshLocks() })
 
@@ -13,6 +14,9 @@
   $effect(() => {
     for (const l of locks.list) requestThumb(l.path)
   })
+
+  let filter = $state('')
+  const shown = $derived(filterByText(locks.list, filter, (l) => [l.path, l.holder]))
 
   const base = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
   const dir = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
@@ -70,15 +74,19 @@
 
 <div class="locks">
   <div class="lhead">
-    <span class="title"><Icon name="lock" size={16} /> Locks <span class="count">{locks.list.length} held</span></span>
+    <span class="title"><Icon name="lock" size={16} /> Locks <span class="count">{filter.trim() ? `${shown.length} of ${locks.list.length}` : `${locks.list.length} held`}</span></span>
     <button class="ghost" onclick={lockNewFile} disabled={locking || !!repo.busy}>{locking ? 'Locking…' : '+ Lock a file…'}</button>
   </div>
 
+  <input class="filter" bind:value={filter} placeholder="Filter locks" />
+
   {#if locks.list.length === 0}
     <div class="empty muted">No files are locked.</div>
+  {:else if shown.length === 0}
+    <div class="empty muted">No locks match.</div>
   {:else}
     <div class="list" role="list">
-      {#each locks.list as l (l.path)}
+      {#each shown as l (l.path)}
         <div class="lrow" role="listitem"
              oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: l.path } }}>
           {#if listThumbs.get(l.path)}
@@ -111,6 +119,7 @@
   .title :global(svg) { color: var(--text-muted); }
   .count { font-size: 11px; color: var(--text-dim); }
   .lhead .ghost { margin-left: auto; }
+  .filter { display: block; width: 100%; margin: 0 0 12px; padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .empty { padding: 24px; text-align: center; }
   .list { display: flex; flex-direction: column; gap: 8px; }
   .lrow { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
