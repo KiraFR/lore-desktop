@@ -5,8 +5,7 @@
   import { api } from './api'
   import { confirmAction } from './confirm'
   import Icon from './Icon.svelte'
-  import AudioPlayer from './AudioPlayer.svelte'
-  import ModelViewer from './ModelViewer.svelte'
+  import MediaPreview from './MediaPreview.svelte'
   import FileHistorySection from './FileHistorySection.svelte'
   import { fmtSize } from './sizeFormat'
   import { typeName } from './fileTypes'
@@ -41,22 +40,9 @@
       .finally(() => { if (file?.path === f.path) diffLoading = false })
   })
 
-  // Working-copy preview (image thumbnail / audio) for binary files. Same
-  // anti-race pattern as the diff: check the selection still matches on arrival.
+  // Working-copy preview (image thumbnail / audio / 3D) for binary files,
+  // populated by MediaPreview; the Dimensions row below reads it.
   let preview = $state<PreviewData | null>(null)
-  let lastPreviewPath = ''
-
-  $effect(() => {
-    const f = file
-    const repoPath = session.config.currentRepo
-    if (!f || !f.isBinary || f.action === 'delete' || !repoPath) { preview = null; lastPreviewPath = ''; return }
-    const same = f.path === lastPreviewPath
-    lastPreviewPath = f.path
-    if (!same) preview = null
-    api.getPreview(repoPath, f.path)
-      .then((p) => { if (file?.path === f.path) preview = p })
-      .catch(() => { if (file?.path === f.path) preview = null })
-  })
 
   const baseName = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1) }
   const dirName = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1) }
@@ -103,37 +89,7 @@
       {/if}
 
       {#if file.isBinary}
-        {#if preview?.kind === 'audio' && preview.url}
-          <AudioPlayer src={preview.url} name={baseName(file.path)} />
-          <p class="note muted"><Icon name="info" size={14} /> Audio asset — plays the working copy.</p>
-        {:else if preview?.kind === 'model' && preview.url}
-          <ModelViewer url={preview.url} name={baseName(file.path)} />
-          <p class="note muted"><Icon name="info" size={14} /> 3D preview of the working copy — drag to orbit, scroll to zoom.</p>
-        {:else}
-          <div class="cmp">
-            {#if file.action !== 'add'}
-              <figure class="cbox">
-                <div class="thumb before"><Icon name="image" size={26} /></div>
-                <figcaption>Before · previous revision</figcaption>
-              </figure>
-            {/if}
-            {#if file.action !== 'delete'}
-              <figure class="cbox">
-                {#if preview?.kind === 'image' && preview.url}
-                  <div class="thumb after img"><img src={preview.url} alt={baseName(file.path)} /></div>
-                {:else}
-                  <div class="thumb after"><Icon name="image" size={26} /></div>
-                {/if}
-                <figcaption class="aft">{file.action === 'add' ? 'New file' : 'After · working copy'}</figcaption>
-              </figure>
-            {/if}
-          </div>
-          {#if preview?.kind === 'image'}
-            <p class="note muted"><Icon name="info" size={14} /> Previous-revision preview needs server support — working copy only.</p>
-          {:else}
-            <p class="note muted"><Icon name="info" size={14} /> Binary asset — visual compare, no text diff.</p>
-          {/if}
-        {/if}
+        <MediaPreview path={file.path} action={file.action} bind:preview />
       {:else if diffLoading}
         <div class="textnote muted"><Icon name="file" size={22} /><p>Loading diff…</p></div>
       {:else if diffError}
@@ -197,19 +153,6 @@
   .badge.deleted { background: rgba(248, 81, 73, .15); color: var(--deleted); }
   .discard { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
   .discard:hover:not(:disabled) { color: var(--deleted); border-color: var(--deleted); }
-  .cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  figure { margin: 0; }
-  .thumb { height: 150px; border-radius: 8px; display: grid; place-items: center; color: var(--text-dim); border: 1px solid var(--border); }
-  .thumb.before { background: #2b2f35; }
-  .thumb.after { background: #33475f; }
-  /* The box is a grid with auto rows, where a percentage height on the img
-     resolves as auto (335×335 in a 335×149 box, then clipped). Absolute
-     positioning sizes the img against the box itself instead. */
-  .thumb.img { padding: 0; overflow: hidden; position: relative; background: repeating-conic-gradient(#2b2f35 0% 25%, #333a44 0% 50%) 50% / 24px 24px; }
-  .thumb.img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-  figcaption { font-size: 11px; color: var(--text-muted); margin-top: 7px; text-align: center; }
-  figcaption.aft { color: var(--accent-text); }
-  .note { display: flex; align-items: center; gap: 7px; font-size: 11px; margin: 12px 0 4px; }
   .textnote { display: flex; align-items: center; gap: 12px; padding: 22px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; }
   .textnote p { margin: 0; }
   .diff { font-family: var(--font-mono); font-size: 12px; line-height: 1.55; border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin: 4px 0; }
