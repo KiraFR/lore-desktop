@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPreviewableImage } from './previewKind'
+import { isPreviewableImage, theirsSidecar, stripTheirsSuffix } from './previewKind'
 
 describe('isPreviewableImage', () => {
   it('accepts common game image formats, case-insensitively', () => {
@@ -16,5 +16,17 @@ describe('isPreviewableImage', () => {
     expect(isPreviewableImage('Source/main.cpp')).toBe(false)
     expect(isPreviewableImage('Audio/hit.wav')).toBe(false)
     expect(isPreviewableImage('Content/SM_Crate.obj')).toBe(false)
+  })
+})
+
+describe('theirs sidecar helpers', () => {
+  it('builds and strips the sidecar path', () => {
+    expect(theirsSidecar('Content/T_Rock.png')).toBe('Content/T_Rock.png~theirs')
+    expect(stripTheirsSuffix('Content/T_Rock.png~theirs')).toBe('Content/T_Rock.png')
+    expect(stripTheirsSuffix('Content/T_Rock.png')).toBe('Content/T_Rock.png')
+  })
+  it('classifies a sidecar like its base file', () => {
+    expect(isPreviewableImage('Content/T_Rock.png~theirs')).toBe(true)
+    expect(isPreviewableImage('Source/main.cpp~theirs')).toBe(false)
   })
 })
