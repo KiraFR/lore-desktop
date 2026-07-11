@@ -758,6 +758,110 @@ pub async fn lore_clone(
     .await
 }
 
+#[derive(Serialize, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedStoreStatusDto {
+    pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Global "use automatically" toggle, when the CLI reports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_use: Option<bool>,
+}
+
+/// Parse `shared-store info --json`. Tag `sharedStoreInfo` (pinned Task 5); the
+/// per-remote fields are PARALLEL ARRAYS `remoteUrls`/`paths`/`exists`, plus a
+/// global `useAutomatically` (0/1). We surface the first store's path + whether
+/// any store exists + the global auto-use flag.
+fn shared_store_status_from(events: &[LoreEvent]) -> SharedStoreStatusDto {
+    fn truthy(v: &serde_json::Value) -> bool {
+        v.as_bool().unwrap_or_else(|| v.as_u64().map(|n| n != 0).unwrap_or(false))
+    }
+    let info = events_with_tag(events, "sharedStoreInfo").into_iter().next();
+    let path = info
+        .and_then(|d| d.get("paths"))
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.iter().find_map(|p| p.as_str().filter(|s| !s.is_empty())))
+        .map(String::from);
+    let exists = path.is_some()
+        || info
+            .and_then(|d| d.get("exists"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().any(truthy))
+            .unwrap_or(false);
+    let auto_use = info.and_then(|d| d.get("useAutomatically")).map(truthy);
+    SharedStoreStatusDto { exists, path, auto_use }
+}
+
+/// Whether a shared object store exists on this machine (and where) + the global
+/// auto-use flag. A CLI error here means "no store yet" — a normal answer.
+#[tauri::command]
+pub async fn lore_shared_store_status() -> Result<SharedStoreStatusDto, String> {
+    blocking(move || match run_lore(&["shared-store", "info"]) {
+        Ok(events) => Ok(shared_store_status_from(&events)),
+        Err(_) => Ok(SharedStoreStatusDto::default()),
+    })
+    .await
+}
+
+/// Enable the shared store for clones: create a per-remote store for `server_url`
+/// if none exists yet (create ERRORS on an existing store, so we guard), then turn
+/// on the global automatic-use flag.
+#[tauri::command]
+pub async fn lore_shared_store_enable(server_url: String) -> Result<(), String> {
+    blocking(move || {
+        let has_store = run_lore(&["shared-store", "info"])
+            .map(|ev| shared_store_status_from(&ev).exists)
+            .unwrap_or(false);
+        if !has_store {
+            run_lore(&["shared-store", "create", &server_url])?;
+        }
+        run_lore(&["shared-store", "set-use-automatically", "true"])?;
+        Ok(())
+    })
+    .await
+}
+
+/// Turn off automatic shared-store use (the store itself is kept on disk).
+#[tauri::command]
+pub async fn lore_shared_store_disable() -> Result<(), String> {
+    blocking(move || {
+        run_lore(&["shared-store", "set-use-automatically", "false"])?;
+        Ok(())
+    })
+    .await
+}
+
+#[cfg(test)]
+mod shared_store_tests {
+    use super::*;
+    use crate::lore::parse_events;
+
+    #[test]
+    fn parses_existing_store_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/shared_store_info.ndjson")).unwrap();
+        let s = shared_store_status_from(&events);
+        assert!(s.exists);
+        assert!(s.path.as_deref().is_some_and(|p| p.contains("shared_store")), "path was {:?}", s.path);
+        assert_eq!(s.auto_use, Some(false)); // useAutomatically:0 in the fixture
+    }
+
+    #[test]
+    fn parses_no_store_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/shared_store_info_none.ndjson")).unwrap();
+        let s = shared_store_status_from(&events);
+        assert!(!s.exists);
+        assert_eq!(s.path, None);
+        assert_eq!(s.auto_use, Some(false)); // event present, arrays empty
+    }
+
+    #[test]
+    fn no_info_event_yields_default() {
+        let events = parse_events(r#"{"tagName":"complete","data":{"status":0}}"#).unwrap();
+        assert_eq!(shared_store_status_from(&events), SharedStoreStatusDto::default());
+    }
+}
+
 #[tauri::command]
 pub async fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Result<(), String> {
     blocking(move || {
