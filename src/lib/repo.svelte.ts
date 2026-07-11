@@ -4,6 +4,7 @@ import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction } from './toast'
 import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
 import { opProgress } from './opProgress.svelte'
+import { isNonFastForwardPush, errorMessage } from './pushErrors'
 import type { Branch, Commit, LockEntry, StatusResult } from './types'
 
 const HISTORY_PAGE = 200
@@ -131,20 +132,29 @@ export async function refreshStatus(silent = false) {
   refreshFileSizes()
 }
 
-async function act(kind: 'commit' | 'push' | 'sync', run: (path: string) => Promise<void>) {
+// Returns true when the action ran to completion (refresh included) — the
+// Sync & push chain relies on it. `onError` may claim an error (resolve true)
+// to replace the generic toastError with its own handling; it may be async
+// (the non-FF detector may need a fresh status).
+async function act(
+  kind: 'commit' | 'push' | 'sync',
+  run: (path: string) => Promise<void>,
+  onError?: (e: unknown) => boolean | Promise<boolean>,
+): Promise<boolean> {
   const path = session.config.currentRepo
-  if (!path) return
+  if (!path) return false
   repo.busy = kind
   try { await run(path) }
   catch (e) {
-    toastError(`${kind[0].toUpperCase()}${kind.slice(1)} failed`, e)
+    if (!(await onError?.(e))) toastError(`${kind[0].toUpperCase()}${kind.slice(1)} failed`, e)
     repo.busy = ''
-    return
+    return false
   }
   await refreshStatus()
   // commit/push/sync all change the history — refresh it in the background
   // (cached commits stay visible, no loading screen).
   refreshHistory(true)
+  return true
 }
 
 export const commit = (message: string, exclude: string[] = []) =>
@@ -174,7 +184,27 @@ export const push = () => act('push', async (p) => {
       run: () => releaseLocks(candidates),
     })
   }
+}, (e) => {
+  // Non-fast-forward refusal (the remote advanced under us): offer the
+  // sync-then-push chain instead of a dead-end "Push failed".
+  if (!isNonFastForwardPush(errorMessage(e))) return false
+  toastAction('Remote has new changes', { label: 'Sync & push', run: () => { void syncAndPush() } })
+  refreshStatus(true) // silent: surface remoteAhead in the title bar
+  return true
 })
+
+// The "Sync & push" toast action: sync, then push — UNLESS the sync failed
+// (its own toast already showed) or left an UNRESOLVED merge. A clean catch-up
+// sync auto-commits the merge and leaves us ahead, ready to push. We check
+// stagedPending (revisionStaged non-zero) and NOT mergeInProgress: a committed
+// merge keeps revisionMerged non-zero permanently (it's the merge's 2nd parent),
+// so mergeInProgress stays true even with nothing to resolve — only a genuinely
+// unresolved merge sets revisionStaged (verified against status_merge.ndjson).
+export async function syncAndPush() {
+  if (!(await sync())) return
+  if (repo.status?.stagedPending) return
+  await push()
+}
 
 export async function releaseLocks(paths: string[]) {
   const p = session.config.currentRepo
