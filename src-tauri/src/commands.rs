@@ -50,6 +50,17 @@ pub struct ChangedFileDto {
     pub size: u64,
 }
 
+/// Compteurs du `repositoryStatusSummary` (voir fixtures/README.md — encodage
+/// pinné au lot P4). `mods` replie modifies + moves + copies : l'UI colore les
+/// glyphes R/C dans la famille « modified ».
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusSummaryDto {
+    pub adds: u64,
+    pub mods: u64,
+    pub dels: u64,
+}
+
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusResultDto {
@@ -66,6 +77,9 @@ pub struct StatusResultDto {
     pub merge_in_progress: bool,
     /// An interrupted commit/merge left a staged state (revisionStaged non-zero).
     pub staged_pending: bool,
+    /// Compteurs adds/mods/dels du wire ; absent quand le CLI ne les émet pas.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<StatusSummaryDto>,
     pub files: Vec<ChangedFileDto>,
 }
 
@@ -194,6 +208,15 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
         .map(|h| !zero_hash(h))
         .unwrap_or(false);
 
+    // Événement absent (CLI plus ancien) => None => compteurs masqués, pas de faux zéros.
+    let summary = events_with_tag(events, "repositoryStatusSummary")
+        .into_iter()
+        .next()
+        .map(|d| {
+            let n = |k: &str| d.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+            StatusSummaryDto { adds: n("adds"), mods: n("modifies") + n("moves") + n("copies"), dels: n("deletes") }
+        });
+
     let files = events_with_tag(events, "repositoryStatusFile")
         .into_iter()
         // Directory entries ("type": "directory") are containers, not changes
@@ -210,7 +233,7 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
         })
         .collect();
 
-    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, local_revision_number: local_n, remote_available, remote_authorized, merge_in_progress, staged_pending, files }
+    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, local_revision_number: local_n, remote_available, remote_authorized, merge_in_progress, staged_pending, summary, files }
 }
 
 /// `flag*`/`is*` fields serialize as JSON booleans (via `u8_as_bool`); accept a
@@ -1989,6 +2012,35 @@ mod status_tests {
         assert!(s.local_revision_number > 0);
         assert!(s.revision_number < s.local_revision_number,
             "current {} should trail local head {}", s.revision_number, s.local_revision_number);
+    }
+
+    #[test]
+    fn parses_summary_from_fixture() {
+        let events = parse_events(include_str!("../tests/fixtures/status.ndjson")).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        let sum = s.summary.expect("the captured fixture carries a repositoryStatusSummary");
+        assert_eq!(sum, StatusSummaryDto { adds: 1, mods: 1, dels: 0 });
+    }
+
+    #[test]
+    fn missing_summary_event_is_none() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":false,"isRemoteAhead":false}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(sample).unwrap(), std::path::Path::new(""));
+        assert!(s.summary.is_none());
+    }
+
+    #[test]
+    fn moves_and_copies_fold_into_mods() {
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":false,"isRemoteAhead":false}}"#, "\n",
+            r#"{"tagName":"repositoryStatusSummary","data":{"adds":2,"deletes":1,"modifies":3,"moves":1,"copies":1}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(sample).unwrap(), std::path::Path::new(""));
+        assert_eq!(s.summary, Some(StatusSummaryDto { adds: 2, mods: 5, dels: 1 }));
     }
 }
 
