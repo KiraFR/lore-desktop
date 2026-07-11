@@ -121,7 +121,14 @@ export async function refreshStatus(silent = false) {
   if (!silent) repo.busy = 'status'
   try {
     repo.status = await api.getStatus(path)
-    clearThumbs() // files may have changed on disk — row thumbnails re-resolve via the mtime-keyed cache
+    // Only wipe row thumbnails on an EXPLICIT refresh (repo switch, post-commit/
+    // /sync). The silent window-focus refresh must NOT clear them, or every
+    // refocus blanks and re-decodes the whole change list (visible flicker, and
+    // a `lore preview` re-shell per file in the real app). New files aren't in
+    // the thumb map so they're still fetched; a same-path external content edit
+    // keeps its old thumbnail until the next explicit refresh — an acceptable
+    // trade for killing the per-focus flicker.
+    if (!silent) clearThumbs()
   } catch (e) { toastError("Couldn't load changes", e) }
   finally { if (!silent) repo.busy = '' }
   // Locks + branches hit a remote query that can be slow/offline — fetch them in

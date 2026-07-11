@@ -65,9 +65,13 @@
     <input id="dn" bind:value={name} placeholder="e.g. Jimmy D." onblur={saveName}
            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveName() } }} />
   </div>
-  <label class="storetoggle">
+  <label class="storetoggle"
+         title="A shared object store lets every clone on this machine reuse the same on-disk objects instead of each keeping a full copy — saves disk space and speeds up new clones.">
+    <span class="stlabel">
+      Shared store
+      <span class="sthint">Clones reuse one local object store — saves disk</span>
+    </span>
     <input type="checkbox" checked={storeOn === true} disabled={storeOn === null || !session.config.serverUrl} onchange={toggleStore} />
-    <span>Use shared store for clones</span>
   </label>
   <div class="appearance">
     <span class="aplabel">Appearance</span>
@@ -97,8 +101,12 @@
   .action:hover:not(:disabled) { background: var(--panel-hover); border: none; }
   .action.out { color: var(--deleted); }
   .action :global(svg) { color: currentColor; }
-  .storetoggle { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
-  .storetoggle input { accent-color: var(--accent); }
+  .storetoggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
+  .stlabel { display: flex; flex-direction: column; min-width: 0; }
+  .sthint { font-size: 10.5px; color: var(--text-dim); }
+  /* Override the global `input { width: 100% }` — an unconstrained checkbox
+     stretches to the full row and squashes the label to nothing. */
+  .storetoggle input { flex: none; width: auto; accent-color: var(--accent); }
   .appearance { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 10px; font-size: 12px; color: var(--text); }
   .aplabel { color: var(--text); }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
