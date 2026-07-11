@@ -2,6 +2,35 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-11** (19/19 tâches, vérification finale
+> Task 19 passée). Suites : vitest 119 (16 fichiers), cargo 98, svelte-check 0 erreur
+> / 0 warning. Parcours navigateur mock complet : préchargement History (commits déjà
+> là, pas de « Loading history… ») ; preview History (clic/Enter/Escape/re-clic,
+> icône .cpp, mention working-copy sur commit ancien, absente sur le tip, « No longer
+> in the working copy » sur delete, reset au changement de commit) ; vue Changes
+> inchangée (diff texte, compare binaire avec vignettes, lock, discard, timeline) ;
+> merge feature/loot → cartes binaires avec vignettes des DEUX côtés + conflit texte
+> avec mini-diff, bannière « Merging feature/loot into main », reprise neutre
+> « Resolving merge into main » + « Theirs · incoming », abort externe (levier
+> localStorage) → toast « Merge was aborted outside the app » + retour setup, abort
+> LOCAL sans ce toast ; clone « Cloning… 17% — 8.0 MB / 48.0 MB » progressant
+> (17 % → 75 % → fini) + boutons de clone de l'autre surface désactivés pendant le
+> vol (garde cross-surface RepoPicker ↔ RepoSwitcher).
+> Déviations conscientes du lot : constat Task 12 — un merge conflictuel réel produit
+> 3 sidecars pour un conflit texte et 2 pour un binaire, PAS de sidecar `~mine` côté
+> binaire (le disque tient le rôle de mine) ; le mini-diff des cartes Merge est le
+> patch avec marqueurs de conflit bruts (assumé) ; fix `decode()` ImageReader
+> nécessaire hors plan dans `preview.rs` ; Task 11 : idiome `div.rowmain`
+> `role="button"` pour l'a11y des lignes fichiers ; win32job 2.0.3 exige `&mut` sur
+> `set_extended_limit_info` — signature ajustée. Limite mock relevée en Task 19 :
+> vignette image / lecteur audio non exerçables dans la preview History (le
+> générateur `buildBigHistory` ne produit que des fichiers `.cpp` — nf=1 donc ext
+> k=0) ; le cas icône est vérifié en History, le cas vignette/audio est couvert côté
+> Changes et Merge.
+> Kill dur réel : `app.exe` (src-tauri/target/debug) tué par `Stop-Process -Force`
+> avec le subscriber `lore.exe` actif (1 process avant) → 3 s après, AUCUN process
+> `lore` (Job object kill-on-close OK), aucun app/lore/vite résiduel.
+
 **Goal:** Livrer les 6 items du lot P2 (spec `docs/superpowers/specs/2026-07-11-lore-desktop-p2-previews-history-design.md`) : préchargement de l'History, finitions progression (libellé « X / Y » + garde globale anti double-clone), corrections de la vue Merge (libellés neutres + récupération d'un abort externe), preview de fichier dans History (avec extraction de composants partagés depuis FilePreview), unification des previews Merge (vignettes réelles Mine/Theirs via le sidecar `~theirs`, mini-diff texte), et Job object Windows pour que les sidecars `lore notification subscribe` meurent avec l'app.
 
 **Architecture:** Frontend Svelte 5 : la logique nouvelle vit dans des modules purs testés vitest (`progress.ts`, `mergeLogic.ts`, `historySelection.ts`, `fileTypes.ts`, `previewKind.ts`), le markup dans les composants. FilePreview.svelte est découpé en trois composants partagés (`MediaPreview`, `FileHistorySection`, `DiffBlock`) SANS changement de comportement côté Changes ; `HistoryFilePreview.svelte` et les cartes Merge les recomposent. Backend Rust : une seule vraie nouveauté (`src-tauri/src/job.rs`, Job object kill-on-close via la crate `win32job` — `windows-rs` n'est pas dans l'arbre de dépendances, vérifié dans Cargo.toml) + un strip du suffixe `~theirs` dans `preview.rs`. Le mock fait vivre chaque nouveauté en dev navigateur.
