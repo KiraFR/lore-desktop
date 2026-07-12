@@ -43,6 +43,7 @@ pub fn run() {
         commands::lore_push,
         commands::lore_sync,
         commands::lore_sync_to,
+        commands::lore_restore_file,
         commands::lore_set_lock,
         commands::lore_locks,
         commands::lore_diff,

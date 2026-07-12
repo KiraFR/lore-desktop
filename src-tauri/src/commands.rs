@@ -1120,6 +1120,63 @@ pub async fn lore_sync_to(app: tauri::AppHandle, repo_path: String, revision: St
     .await
 }
 
+/// The local head revision signature from a `status` stream (the revision we
+/// sync BACK to after a scoped restore). `revisionLocal` is the local head even
+/// when the working copy is time-traveled below it.
+fn head_revision_from(events: &[LoreEvent]) -> Option<String> {
+    events_with_tag(events, "repositoryStatusRevision")
+        .into_iter()
+        .next()
+        .and_then(|d| d.get("revisionLocal").and_then(|v| v.as_str()))
+        .filter(|h| !h.is_empty())
+        .map(String::from)
+}
+
+/// Restore one file to the content it had at `revision`, as a working-copy
+/// change on top of the current head. LOCAL only — nothing is pushed.
+///
+/// `lore sync <rev> --root-file <path>` rebuilds the file at that revision on
+/// disk but moves the repo-wide synced pointer, so we round-trip: scoped sync to
+/// `revision`, read the bytes, sync back to the head, write the bytes back. The
+/// file then shows as a pending add/modify. Guards (clean tree, locks) live in
+/// the frontend. On any failure after the first sync we best-effort sync back to
+/// the head so the repo is never left time-traveled.
+#[tauri::command]
+pub async fn lore_restore_file(
+    app: tauri::AppHandle,
+    repo_path: String,
+    path: String,
+    revision: String,
+    op_id: Option<String>,
+) -> Result<(), String> {
+    blocking(move || {
+        let op_id = op_id_or_default(op_id);
+        let head = head_revision_from(&run_lore(&["status", "--repository", &repo_path])?)
+            .ok_or_else(|| "couldn't read the current head revision".to_string())?;
+        let abs = std::path::Path::new(&repo_path).join(&path);
+        let abs_str = abs.to_string_lossy().to_string();
+
+        // 1. Scoped sync: bring the file's `revision` content onto disk.
+        run_lore_op(&app, "sync", &op_id, &["sync", &revision, "--root-file", &abs_str, "--repository", &repo_path])?;
+        // 2. Read the restored bytes (do this BEFORE syncing back — the sync-back resets the file).
+        let bytes = match std::fs::read(&abs) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = run_lore_op(&app, "sync", &op_id, &["sync", &head, "--repository", &repo_path]);
+                return Err(format!("reading the restored file: {e}"));
+            }
+        };
+        // 3. Sync back to the head (unscoped): returns the repo to the tip; the file is reset to its head state.
+        run_lore_op(&app, "sync", &op_id, &["sync", &head, "--repository", &repo_path])?;
+        // 4. Write the old bytes back — the file is now a pending change at the head.
+        std::fs::write(&abs, &bytes).map_err(|e| format!("writing the restored file: {e}"))?;
+        // 5. Clear any residual empty-staged marker the round-trip may leave (best-effort).
+        let _ = run_lore(&["unstage", ".", "--repository", &repo_path]);
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn lore_set_lock(repo_path: String, path: String, lock: bool) -> Result<(), String> {
     blocking(move || {
@@ -2246,6 +2303,14 @@ mod status_tests {
         assert!(s.local_revision_number > 0);
         assert!(s.revision_number < s.local_revision_number,
             "current {} should trail local head {}", s.revision_number, s.local_revision_number);
+    }
+
+    #[test]
+    fn head_revision_is_the_local_head_hash() {
+        let events = parse_events(include_str!("../tests/fixtures/status.ndjson")).unwrap();
+        // revisionLocal is the local head signature we sync back to after a restore.
+        let head = head_revision_from(&events).expect("status carries a local head");
+        assert_eq!(head.len(), 64, "a full revision hash, was {head:?}");
     }
 
     #[test]
