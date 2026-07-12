@@ -9,6 +9,7 @@
   import RepoSwitcher from './RepoSwitcher.svelte'
   import AvatarMenu from './AvatarMenu.svelte'
   import AboutRepo from './AboutRepo.svelte'
+  import Preferences from './Preferences.svelte'
 
   const repoName = $derived(session.config.currentRepo?.split(/[\\/]/).pop() || 'Select a repository')
   const noRemote = $derived(repo.status ? !repo.status.remoteAvailable || !repo.status.remoteAuthorized : false)
@@ -20,6 +21,7 @@
   let zoneEl = $state<HTMLDivElement>()
   let avatarOpen = $state(false)
   let avatarZoneEl = $state<HTMLDivElement>()
+  let prefsOpen = $state(false)
 
   // Close a menu when clicking anywhere outside its zone (button + popover).
   $effect(() => {
@@ -101,10 +103,11 @@
 
   <div class="avatarzone" bind:this={avatarZoneEl}>
     <button class="avatar" class:open={avatarOpen} onclick={() => (avatarOpen = !avatarOpen)} title="Account">{initials}</button>
-    {#if avatarOpen}<AvatarMenu onclose={() => (avatarOpen = false)} />{/if}
+    {#if avatarOpen}<AvatarMenu onclose={() => (avatarOpen = false)} onpreferences={() => (prefsOpen = true)} />{/if}
   </div>
 
   {#if aboutOpen}<AboutRepo onclose={() => (aboutOpen = false)} />{/if}
+  {#if prefsOpen}<Preferences onclose={() => (prefsOpen = false)} />{/if}
 </header>
 
 <style>
