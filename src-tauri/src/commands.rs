@@ -195,18 +195,24 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
 
     // Merge/staged residual state (StatusBar chip). Field names pinned against
     // tests/fixtures/status_merge.ndjson + status_staged.ndjson; absent fields
-    // (older CLI, no merge) default to false. NB: a merge also sets
-    // revisionStaged — the frontend chip checks mergeInProgress first.
-    let merge_in_progress = rev
-        .and_then(|d| d.get("revisionMerged"))
-        .and_then(|v| v.as_str())
-        .map(|h| !zero_hash(h))
-        .unwrap_or(false);
+    // (older CLI, no merge) default to false.
     let staged_pending = rev
         .and_then(|d| d.get("revisionStaged"))
         .and_then(|v| v.as_str())
         .map(|h| !zero_hash(h))
         .unwrap_or(false);
+    // `revisionMerged` alone is NOT enough for "a merge needs resolution": a
+    // COMMITTED merge keeps it set permanently (it's the merge commit's 2nd
+    // parent), so keying the chip off it lit "Merge in progress" forever after
+    // any clean sync-merge. An UNRESOLVED merge is the one that also leaves a
+    // staged state (revisionStaged != 0 — verified: status_merge.ndjson carries
+    // both, plus flagConflictUnresolved files). Require BOTH.
+    let merged_head = rev
+        .and_then(|d| d.get("revisionMerged"))
+        .and_then(|v| v.as_str())
+        .map(|h| !zero_hash(h))
+        .unwrap_or(false);
+    let merge_in_progress = merged_head && staged_pending;
 
     // Événement absent (CLI plus ancien) => None => compteurs masqués, pas de faux zéros.
     let summary = events_with_tag(events, "repositoryStatusSummary")
@@ -2213,6 +2219,22 @@ mod status_tests {
         );
         let s = status_from(&parse_events(absent).unwrap(), std::path::Path::new(""));
         assert!(!s.merge_in_progress);
+        assert!(!s.staged_pending);
+    }
+
+    #[test]
+    fn committed_merge_head_is_not_merge_in_progress() {
+        // A merge commit keeps `revisionMerged` set (its 2nd parent) even once
+        // committed AND pushed — with `revisionStaged` back to zero. That is a
+        // clean state, NOT an in-progress merge: the "Merge in progress — resume"
+        // chip must stay OFF, or it lingers permanently after every clean
+        // sync-merge (real hash captured from the P6 catch-up sync).
+        let committed = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":22,"revisionRemoteNumber":22,"isLocalAhead":false,"isRemoteAhead":false,"revisionMerged":"608dc85c8a8d0259a86d00499dbfe6302910c01f4ca218f9ca29f48ef7c81eeb","revisionStaged":"0000000000000000000000000000000000000000000000000000000000000000"}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(committed).unwrap(), std::path::Path::new(""));
+        assert!(!s.merge_in_progress, "a committed merge head must not read as merge-in-progress");
         assert!(!s.staged_pending);
     }
 
