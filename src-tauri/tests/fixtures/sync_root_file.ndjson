@@ -1,0 +1,12 @@
+{"tagName":"revisionSyncTarget","data":{"remote":"lore://lore.example.com:41337","repository":"019f333af5e073d28bb117ad1596784a","branch":"019f39559d9e7ca19b4335cf699f3fcb","branchName":"feature/test","sourceRevision":"bf9d4a3b8a0b18fd3498e343a59edc5e0d38f3b98d427443f2060f567a1ecffd","sourceRevisionNumber":25,"targetRevision":"b5cdde38c00b2a648670fd46520bbba58ccbf1e43f45a369e50426216dc0c0a5","targetRevisionNumber":24,"isLatest":0,"local":1}}
+{"tagName":"log","data":{"level":"info","category":0,"timestamp":1783844360848,"location":"lore_revision::fs::realize","message":"Calculating deltas 25 -> 24"}}
+{"tagName":"dependencyResolveBegin","data":{"rootCount":1}}
+{"tagName":"dependencyResolveEnd","data":{"resolvedCount":1}}
+{"tagName":"log","data":{"level":"info","category":0,"timestamp":1783844360850,"location":"lore_revision::fs::realize","message":"Dependency filter: 1 of 1 changes in inclusion set"}}
+{"tagName":"log","data":{"level":"info","category":0,"timestamp":1783844360850,"location":"lore_revision::fs::realize","message":"Verifying 1 changes with local file system"}}
+{"tagName":"revisionSyncProgress","data":{"fileUpdate":0,"fileUpdateTotal":1,"fileDelete":0,"fileDeleteTotal":0,"fileAutomerge":0,"fileConflict":0,"bytesUpdate":0,"bytesUpdateTotal":44,"discoveryComplete":true}}
+{"tagName":"revisionSyncFile","data":{"path":"p6-difftest.txt","size":44,"action":"add","flagFile":1}}
+{"tagName":"revisionSyncProgress","data":{"fileUpdate":0,"fileUpdateTotal":1,"fileDelete":0,"fileDeleteTotal":0,"fileAutomerge":0,"fileConflict":0,"bytesUpdate":0,"bytesUpdateTotal":44,"discoveryComplete":true}}
+{"tagName":"revisionSyncProgress","data":{"fileUpdate":1,"fileUpdateTotal":1,"fileDelete":0,"fileDeleteTotal":0,"fileAutomerge":0,"fileConflict":0,"bytesUpdate":44,"bytesUpdateTotal":44,"discoveryComplete":true}}
+{"tagName":"revisionSyncRevision","data":{"branch":"019f39559d9e7ca19b4335cf699f3fcb","revision":"b5cdde38c00b2a648670fd46520bbba58ccbf1e43f45a369e50426216dc0c0a5","revisionNumber":24,"flagMerge":false,"flagConflict":false}}
+{"tagName":"complete","data":{"status":0}}

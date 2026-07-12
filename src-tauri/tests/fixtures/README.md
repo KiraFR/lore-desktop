@@ -461,3 +461,17 @@ chemin ABSOLU, comme le fait déjà `lore_diff`). `action` : **`add`** (patch `-
 end of file` présentes). Parsé par le `parse_diff` existant (le même que `lore_diff` du
 working-tree). Sert au diff TEXTE historique dans la preview de History (parent→révision du
 commit). Le contenu BINAIRE à une révision reste hors de portée (pas de `file cat`).
+
+**Scoped sync (restore one file to an old revision)** (fixture sync_root_file.ndjson,
+capturée le 2026-07-12 pour A4). `lore sync <revSig> --root-file <path> --json` synchronise
+UNIQUEMENT ce fichier (+ ses dépendances) à la révision cible. Events : `revisionSyncTarget`
+{sourceRevision(+Number), targetRevision(+Number), isLatest, local}, `dependencyResolveBegin/End`
+{rootCount, resolvedCount} (le filtre de dépendances — resolvedCount > rootCount si le fichier a
+des deps), `revisionSyncProgress` {fileUpdate(Total), bytesUpdate(Total), discoveryComplete},
+`revisionSyncFile` {path, size, action, flagFile}, `revisionSyncRevision` {revision, revisionNumber,
+flagMerge, flagConflict}, puis `complete`. ⚠ La commande DÉPLACE la révision synchronisée vers la
+cible (le repo passe « behind » sur ce fichier) — d'où le flux « restore-forward » A4 : sync scopé
+→ lire les octets → re-sync au head → réécrire les octets (le fichier devient un changement en
+attente `flagDirty:true` action add/modify au head, prêt à committer). Le round-trip peut laisser
+un état « staged vide » non-zéro → `unstage` le nettoie. Restore = LOCAL (rien poussé) ; le lock
+exclusif du fichier est géré côté UI (bloqué si locké par un tiers, Lock&restore si libre).
