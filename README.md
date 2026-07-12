@@ -42,7 +42,6 @@ The app is fully wired to a real `lore` binary: every action shells out to `lore
 Working-copy previews render inline instead of showing a generic icon:
 - Images: PNG/JPEG/WebP/BMP/GIF/TGA/TIFF, plus DDS (BC1–BC7), EXR/HDR (tone-mapped), PSD (flattened), Blender `.blend` (embedded thumbnail).
 - Unreal `.uasset` / `.umap`: the editor-embedded thumbnail, decoded from the package's thumbnail table.
-- Substance `.sbsar` (the published icon embedded in the archive).
 - Audio (wav/ogg/mp3/flac) with waveform peaks and playback.
 - 3D models (glTF/GLB, OBJ, FBX) via an orbiting three.js viewer.
 
