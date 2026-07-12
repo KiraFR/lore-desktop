@@ -17,7 +17,7 @@ pub struct PreviewDto {
 const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 const IMAGE_EXTS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend",
-    "uasset", "umap", "sbsar", "spp",
+    "uasset", "umap", "sbsar",
 ];
 
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
@@ -117,7 +117,6 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "blend" => decode_blend(path),
         "uasset" | "umap" => decode_uasset(path),
         "sbsar" => decode_sbsar(path),
-        "spp" => decode_spp(path),
         // Format is picked from the classified `ext`, not sniffed from the
         // on-disk file extension — a `~theirs` sidecar's real filename
         // (e.g. `tex.png~theirs`) isn't a format `image` recognizes.
@@ -328,9 +327,6 @@ fn decode_uasset(path: &Path) -> Result<image::RgbaImage, String> {
 /// inside source data.
 const UASSET_MAX_PX: u32 = 1024;
 
-/// .spp files can carry full-size previews — accept up to 2048 px.
-const SPP_MAX_PX: u32 = 2048;
-
 /// Largest .sbsar archive entry worth extracting as an icon.
 const SBSAR_MAX_ICON_BYTES: u64 = 10 << 20;
 
@@ -365,20 +361,6 @@ fn decode_sbsar(path: &Path) -> Result<image::RgbaImage, String> {
     .ok_or("no PNG icon in archive")?;
     let data = z.read_file(&name).map_err(|e| e.to_string())?;
     image::load_from_memory(&data).map(|d| d.to_rgba8()).map_err(|e| e.to_string())
-}
-
-/// Opportunistic Substance Painter (.spp = HDF5 container) preview: no
-/// documented thumbnail stream, so after checking the HDF5 magic we run
-/// the same bounded PNG/JPEG scan as the .uasset fallback and keep the
-/// first hit that decodes reasonably sized.
-fn decode_spp(path: &Path) -> Result<image::RgbaImage, String> {
-    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let len = f.metadata().map_err(|e| e.to_string())?.len();
-    let head = read_at(&mut f, 0, 8).ok_or("unreadable file")?;
-    if head != b"\x89HDF\r\n\x1a\n" {
-        return Err("not an HDF5 container".into());
-    }
-    magic_scan_image(&mut f, len, SPP_MAX_PX).ok_or_else(|| "no embedded preview".into())
 }
 
 /// Parse the FPackageFileSummary far enough to locate ThumbnailTableOffset.
@@ -478,7 +460,7 @@ fn object_thumbnail(f: &mut std::fs::File, off: u64, file_len: u64) -> Option<im
 /// Format-agnostic bounded chunked scan (64 MiB read budget, chunks
 /// overlapping enough that a whole thumbnail payload is always seen in one
 /// piece) for a PNG/JPEG magic that decodes no larger than `max_px`.
-/// Shared by the .uasset fallback and the opportunistic .spp path.
+/// Shared by the .uasset embedded-thumbnail fallback.
 fn magic_scan_image(f: &mut std::fs::File, file_len: u64, max_px: u32) -> Option<image::RgbaImage> {
     const CHUNK: usize = 16 << 20;
     const OVERLAP: usize = 4 << 20;
@@ -549,7 +531,7 @@ pub(crate) fn image_preview(abs: &Path, ext: &str, max_px: u32, cache_dir: Optio
                 };
             }
         }
-        // A remembered failure: skip re-decoding (e.g. a 30 MB .spp rescan on
+        // A remembered failure: skip re-decoding (e.g. a large .uasset rescan on
         // every list refresh). The mtime+size key invalidates it on file change.
         if dir.join(format!("{key}.none")).exists() {
             return none();
@@ -908,42 +890,6 @@ mod tests {
         );
         // Oversized or empty entries are never considered.
         assert_eq!(pick_png_entry(vec![("huge_icon.png", 11 << 20), ("empty.png", 0)]), None);
-    }
-
-    #[test]
-    fn spp_scan_finds_embedded_png() {
-        let d = dir("sppscan");
-        let png = mini_png(5, 4);
-        let mut b = b"\x89HDF\r\n\x1a\n".to_vec();
-        b.extend_from_slice(&noise(2000));
-        b.extend_from_slice(&png);
-        b.extend_from_slice(&noise(2000));
-        let p = d.join("proj.spp");
-        std::fs::write(&p, b).unwrap();
-        let out = image_preview(&p, "spp", 128, None);
-        assert_eq!(out.kind, "image");
-        assert_eq!((out.width, out.height), (Some(5), Some(4)));
-    }
-
-    #[test]
-    fn spp_without_image_is_none() {
-        let d = dir("sppnone");
-        let p = d.join("empty.spp");
-        let mut b = b"\x89HDF\r\n\x1a\n".to_vec();
-        b.extend_from_slice(&noise(4096));
-        std::fs::write(&p, b).unwrap();
-        assert_eq!(image_preview(&p, "spp", 128, None).kind, "none");
-    }
-
-    #[test]
-    fn non_hdf5_spp_is_none() {
-        let d = dir("sppbad");
-        let png = mini_png(4, 4);
-        let mut b = noise(64);
-        b.extend_from_slice(&png); // even with a PNG inside, wrong magic ⇒ none
-        let p = d.join("fake.spp");
-        std::fs::write(&p, b).unwrap();
-        assert_eq!(image_preview(&p, "spp", 128, None).kind, "none");
     }
 
     #[test]

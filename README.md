@@ -42,7 +42,7 @@ The app is fully wired to a real `lore` binary: every action shells out to `lore
 Working-copy previews render inline instead of showing a generic icon:
 - Images: PNG/JPEG/WebP/BMP/GIF/TGA/TIFF, plus DDS (BC1–BC7), EXR/HDR (tone-mapped), PSD (flattened), Blender `.blend` (embedded thumbnail).
 - Unreal `.uasset` / `.umap`: the editor-embedded thumbnail, decoded from the package's thumbnail table.
-- Substance `.sbsar` (published icon) and `.spp` (opportunistic embedded preview).
+- Substance `.sbsar` (the published icon embedded in the archive).
 - Audio (wav/ogg/mp3/flac) with waveform peaks and playback.
 - 3D models (glTF/GLB, OBJ, FBX) via an orbiting three.js viewer.
 
@@ -64,7 +64,7 @@ Working-copy previews render inline instead of showing a generic icon:
   - `lore.rs` — the process runner: spawns `lore`, parses its NDJSON stream, exposes both a one-shot and a streaming (progress-emitting) mode.
   - `config.rs` — persists `AppConfig` (server URL, current/recent repos, display name) to disk.
   - `notifications.rs` — manages a background `lore notification subscribe` child process and forwards its events to the webview.
-  - `preview.rs` — the working-copy preview pipeline: format decoding (DDS/PSD/EXR/HDR/Blender/`.uasset`/`.umap`/`.sbsar`/`.spp`), thumbnail generation, and an on-disk cache keyed by path + mtime + size.
+  - `preview.rs` — the working-copy preview pipeline: format decoding (DDS/PSD/EXR/HDR/Blender/`.uasset`/`.umap`/`.sbsar`), thumbnail generation, and an on-disk cache keyed by path + mtime + size.
 
 ## Develop
 
