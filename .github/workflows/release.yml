@@ -31,8 +31,10 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
+      # npm install (not npm ci): tolerant of the platform-optional-dep lock
+      # drift that npm ci rejects — see the CI workflow's note.
       - name: Install node dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build Tauri app and publish draft release
         uses: tauri-apps/tauri-action@v0

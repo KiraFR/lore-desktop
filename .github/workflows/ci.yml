@@ -37,8 +37,13 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
+      # `npm install`, not `npm ci`: platform-specific OPTIONAL deps (the Linux
+      # rollup binary + its @emnapi wasm subdeps) drift out of a Windows-authored
+      # lockfile, and `npm ci`'s strict lock-sync check then fails on Linux.
+      # `npm install` resolves them per-platform while still honoring pinned
+      # versions from the lockfile.
       - name: Install node dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Type-check (svelte-check + tsc)
         run: npm run check
