@@ -85,6 +85,22 @@ pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
     Ok(events)
 }
 
+/// Run `lore <args>` (NO `--json`) and return raw stdout as a string. For the
+/// few commands that print human text instead of NDJSON (e.g. `logfile info`).
+/// Same helper-thread + timeout guard as `run_lore`.
+pub fn run_lore_raw(args: &[&str]) -> Result<String, String> {
+    let owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(Command::new("lore").args(&owned).output());
+    });
+    match rx.recv_timeout(LORE_TIMEOUT) {
+        Ok(Ok(o)) => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
+        Ok(Err(e)) => Err(format!("failed to launch lore: {e}")),
+        Err(_) => Err("lore command timed out".to_string()),
+    }
+}
+
 /// Stall detector for the streaming runner: if the child emits NO line for this
 /// long, it is considered hung, killed, and the operation errors. An operation
 /// that keeps making progress is never killed — this replaces the flat 45 s cap

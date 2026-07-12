@@ -75,6 +75,7 @@ pub fn run() {
         commands::os_open_path,
         commands::os_path_exists,
         commands::lore_update_path,
+        commands::lore_logfile_location,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

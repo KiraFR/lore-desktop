@@ -1,4 +1,4 @@
-use crate::lore::{events_with_tag, run_lore, run_lore_streaming, LoreEvent};
+use crate::lore::{events_with_tag, run_lore, run_lore_raw, run_lore_streaming, LoreEvent};
 use tauri::Emitter;
 
 /// Run a blocking body on the async runtime's worker pool so a slow or hung
@@ -17,6 +17,47 @@ where
 #[tauri::command]
 pub fn ping() -> String {
     "pong".to_string()
+}
+
+#[cfg(test)]
+mod logfile_tests {
+    use super::*;
+
+    #[test]
+    fn parses_the_location_line() {
+        let out = "Location: C:\\Users\\jimmy\\AppData\\Local\\Epic Games\\lore\\data\\logs\n";
+        assert_eq!(
+            logfile_location_from(out).as_deref(),
+            Some("C:\\Users\\jimmy\\AppData\\Local\\Epic Games\\lore\\data\\logs"),
+        );
+    }
+
+    #[test]
+    fn none_when_no_location_line() {
+        assert_eq!(logfile_location_from("some unrelated output\n"), None);
+        assert_eq!(logfile_location_from(""), None);
+    }
+}
+
+/// The logs directory from `lore logfile info` — the CLI prints a single line
+/// `Location: <abs path>` (plain text, not NDJSON). Returns the trimmed path.
+fn logfile_location_from(stdout: &str) -> Option<String> {
+    stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("Location:"))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+}
+
+/// Absolute path of the CLI's log directory, for the Preferences "Open logs"
+/// button. Global (no repository needed).
+#[tauri::command]
+pub async fn lore_logfile_location() -> Result<String, String> {
+    blocking(move || {
+        let out = run_lore_raw(&["logfile", "info"])?;
+        logfile_location_from(&out).ok_or_else(|| "couldn't read the log location".to_string())
+    })
+    .await
 }
 
 /// True iff any stored identity has an `expires` in the future.
