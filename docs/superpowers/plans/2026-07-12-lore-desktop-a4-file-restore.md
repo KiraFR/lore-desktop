@@ -1,5 +1,13 @@
 # Lore Desktop — A4 « Restaurer une ancienne version d'un fichier » Implementation Plan
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-12** (subagent-driven Tasks 1-5, double revue : READY après 2 correctifs mineurs — test mock rendu porteur + doc-comment recovery adouci).
+>
+> **Suites** : vitest **180 passed / 25 fichiers**, cargo `--lib` **113 passed**, `npm run check` **0/0**.
+>
+> **Vérifs** : mécanique réelle « Flow B » prouvée end-to-end à la discovery (`sync <rev> --root-file` → lire octets → re-sync head → réécrire → le fichier ressort en `action:add flagDirty:true adds:1`, `unstage` nettoie le staged résiduel). Navigateur mock : les boutons **« Restore »** apparaissent sur les 2 révisions non-tip (pas le tip #5), **désactivés** avec le tooltip exact « Commit or discard your pending changes first » (garde arbre-sale). Le chemin **activé** (clic → confirm → restore → toast → vue Changes) n'est pas atteignable en mock (le seed est TOUJOURS sale : `stateFor` applique `seedFiles()` à tout repo + 2 fichiers teammate-locked persistants ; le handler `onRestore` re-garde donc pas de bypass) → couvert par les 7 tests unitaires exhaustifs de `restoreGuard` (enabled/disabled/lock-category/précédence dont teammate-non-bloquant), le test mock porteur de `restoreFile`, et la revue READY de l'action `repo.svelte.ts` (lock/busy/toast/setView sains). Le chemin activé réel = vérif Tauri native (non pilotable en auto). Console sans erreur.
+>
+> **Déviations conscientes** (revue) : `timeTraveled` calqué sur la convention `statusChip.ts` (`revisionNumber < localRevisionNumber`) ; `baseName` local (aucun helper partagé n'existe) ; garde de recovery : un échec du sync-BACK laisse le repo « behind » (surfacé + récupérable par sync manuel — doc-comment corrigé, « never » retiré).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Un bouton « Restore this version » sur chaque révision du file-history d'un asset : il ramène ce fichier à son contenu d'une ancienne révision **comme changement en attente** (à committer), texte OU binaire, sans quitter le head.
