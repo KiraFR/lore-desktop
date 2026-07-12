@@ -3,6 +3,9 @@
   import { api } from './api'
   import { session } from './session.svelte'
   import { fmtSize } from './sizeFormat'
+  import { repo, locks, restoreFile } from './repo.svelte'
+  import { restoreAvailability } from './restoreGuard'
+  import { confirmAction } from './confirm'
 
   // Per-asset revision timeline, fetched lazily on selection (anti-race).
   // `revisions` is bindable so a parent can read the head revision (the
@@ -33,6 +36,33 @@
   }
   const authorLabel = (a: string) =>
     a === session.identity?.email ? 'you' : a.includes('@') ? a.split('@')[0] : a.slice(0, 8)
+
+  // Guard context shared by every revision row: the file's own lock, and the
+  // repo-wide clean-tree / time-travel state (a restore's sync round-trip would
+  // clobber pending changes, and Lore has no stash).
+  const lockHolder = $derived(locks.list.find((l) => l.path === path)?.holder ?? null)
+  const dirtyTree = $derived((repo.status?.files.length ?? 0) > 0)
+  const timeTraveled = $derived((repo.status?.revisionNumber ?? 0) < (repo.status?.localRevisionNumber ?? 0))
+
+  function baseName(p: string) {
+    const i = p.lastIndexOf('/')
+    return i < 0 ? p : p.slice(i + 1)
+  }
+
+  async function onRestore(rev: FileRevision) {
+    const avail = restoreAvailability({ isCurrent: false, dirtyTree, timeTraveled, lockHolder })
+    if (!avail.canRestore) return
+    const note = avail.lock === 'teammate'
+      ? ` It's locked by someone else — you'll be able to restore it locally, but not commit it until they release it.`
+      : avail.lock === 'free'
+        ? ` The file will be locked to you so you can commit it.`
+        : ''
+    const ok = await confirmAction(
+      `Restore ${baseName(path)} to its version at #${rev.revisionNumber}? It becomes a pending change in Changes.${note}`,
+      'Restore this version',
+    )
+    if (ok) restoreFile(path, rev.revision, lockHolder)
+  }
 </script>
 
 <div class="fhhead">History{#if revisions.length} · {revisions.length} {revisions.length === 1 ? 'revision' : 'revisions'}{/if}</div>
@@ -44,7 +74,8 @@
   <p class="fhnote muted">No committed revisions yet.</p>
 {:else}
   <ul class="fhl">
-    {#each revisions.slice(0, 30) as r (r.revision)}
+    {#each revisions.slice(0, 30) as r, i (r.revision)}
+      {@const avail = restoreAvailability({ isCurrent: i === 0, dirtyTree, timeTraveled, lockHolder })}
       <li>
         <span class="tag {glyph[r.action]?.c}">{glyph[r.action]?.v ?? '?'}</span>
         <span class="frev">#{r.revisionNumber}</span>
@@ -52,6 +83,11 @@
         <span class="fwho">{authorLabel(r.author)}</span>
         <span class="fwhen" title={new Date(r.whenMs).toLocaleString()}>{r.when}</span>
         <span class="fsize">{fmtSize(r.size)}</span>
+        {#if i !== 0}
+          <button class="restore" disabled={!avail.canRestore || !!repo.busy}
+                  title={avail.reason ?? 'Restore this version as a pending change'}
+                  onclick={() => onRestore(r)}>Restore</button>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -70,4 +106,6 @@
   .fwho { flex: none; font-size: 11px; color: var(--accent-text); }
   .fwhen { flex: none; font-size: 11px; color: var(--text-dim); }
   .fsize { flex: none; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); min-width: 58px; text-align: right; }
+  .restore { flex: none; padding: 2px 8px; font-size: 10.5px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; }
+  .restore:hover:not(:disabled) { color: var(--text); background: var(--panel-hover); }
 </style>
