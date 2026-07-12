@@ -97,6 +97,7 @@ export const tauriApi: LoreApi = {
   getLocks: (repoPath) => invoke<LockEntry[]>('lore_locks', { repoPath }),
   revealPath: (absPath) => invoke<void>('os_reveal_path', { path: absPath }),
   openPath: (absPath) => invoke<void>('os_open_path', { path: absPath }),
+  logfileLocation: () => invoke<string>('lore_logfile_location'),
   pathExists: (path) => invoke<boolean>('os_path_exists', { path }),
   updateRepoPath: (newPath) => invoke<void>('lore_update_path', { newPath }),
   getBranches: (repoPath) => invoke<Branch[]>('lore_branches', { repoPath }),

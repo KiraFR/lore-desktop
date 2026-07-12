@@ -483,6 +483,10 @@ export const mock: LoreApi = {
   async openPath(_absPath: string) {
     // No OS shell in the browser — parity no-op.
   },
+  async logfileLocation() {
+    await delay(80)
+    return 'C:/Users/jimmy/AppData/Local/Epic Games/lore/data/logs'
+  },
   async pathExists(path: string) {
     // Dev lever: localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/x']))
     let missing: string[] = []

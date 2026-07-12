@@ -243,6 +243,8 @@ export interface LoreApi {
   revealPath(absPath: string): Promise<void>
   /** Open the file with its default application. */
   openPath(absPath: string): Promise<void>
+  /** Absolute path of the CLI's log directory (for the Preferences "Open logs" button). */
+  logfileLocation(): Promise<string>
   /** Does this directory still exist on disk? Drives the "Missing" repo state. */
   pathExists(path: string): Promise<boolean>
   /** Re-register a repository after its folder moved; resolves when the new path answers a status. */
