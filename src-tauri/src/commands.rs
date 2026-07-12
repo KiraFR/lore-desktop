@@ -2719,11 +2719,13 @@ fn reveal_arg_windows(path: &str, exists: bool) -> String {
     if exists {
         return format!("/select,{win}");
     }
-    std::path::Path::new(&win)
-        .parent()
-        .map(|d| d.to_string_lossy().into_owned())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(win)
+    // Parent = everything before the last backslash. NOT `Path::parent()`: it
+    // only treats `\` as a separator on Windows, but this fn also compiles under
+    // `test` on Linux (CI), where it would otherwise return the whole path.
+    match win.rfind('\\') {
+        Some(i) if i > 0 => win[..i].to_string(),
+        _ => win,
+    }
 }
 
 /// Open the system file manager with the file selected (falls back to the
