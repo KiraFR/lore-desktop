@@ -10,12 +10,14 @@ describe('isPreviewableImage', () => {
     expect(isPreviewableImage('Content/Meshes/SM_Crate.uasset')).toBe(true)
     expect(isPreviewableImage('Content/Maps/Arena.UMAP')).toBe(true)
     expect(isPreviewableImage('Materials/Rock_Wall.sbsar')).toBe(true)
-    expect(isPreviewableImage('Painter/HeroSkin.spp')).toBe(true)
   })
   it('rejects everything else', () => {
     expect(isPreviewableImage('Source/main.cpp')).toBe(false)
     expect(isPreviewableImage('Audio/hit.wav')).toBe(false)
     expect(isPreviewableImage('Content/SM_Crate.obj')).toBe(false)
+    // .spp preview was dropped — its thumbnail lives in compressed HDF5 datasets,
+    // not raw image bytes (verified on a real file). Shows a generic icon now.
+    expect(isPreviewableImage('Painter/HeroSkin.spp')).toBe(false)
   })
 })
 
