@@ -67,7 +67,7 @@
 
 <div class="scrim">
   <div class="panel" bind:this={panelEl} role="dialog" aria-modal="true" aria-label="Preferences">
-    <div class="title"><Icon name="edit" size={16} /> Preferences</div>
+    <div class="title"><Icon name="settings" size={16} /> Preferences</div>
 
     <div class="sec">Account</div>
     <label class="field">

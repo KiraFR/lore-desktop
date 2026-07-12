@@ -1,5 +1,15 @@
 # Lore Desktop — Écran de préférences + « Open logs » Implementation Plan
 
+> **STATUT : EXÉCUTÉ ET VÉRIFIÉ le 2026-07-12** (subagent-driven Tasks 1-4, double revue : READY ; + ajout d'un vrai glyphe `settings` (engrenage Feather) car `Icon.svelte` n'en avait pas — l'implémenteur avait mis `edit`).
+>
+> **Suites** : vitest **180 passed / 25 fichiers**, cargo `--lib` **115 passed**, `npm run check` **0/0**.
+>
+> **Constat CLI pinné** : `lore logfile info` sort une ligne texte `Location: <chemin>` (PAS de NDJSON) → runner brut `run_lore_raw` + parser `logfile_location_from`. Dossier global `%LOCALAPPDATA%\Epic Games\lore\data\logs`.
+>
+> **Vérif navigateur mock** : menu compte **épuré** (Preferences… + Sign out, plus AUCUN toggle inline). Modal **Préférences** : 4 sections **Account** (display name + email) / **Appearance** (segment Dark-Light, bascule en direct dans les deux sens) / **Clones** (toggle shared store) / **Support** (« Open logs » sans erreur + chemin de logs affiché). Escape ferme. Console sans erreur. Les 3 réglages sont GONE de l'AvatarMenu, présents uniquement dans le modal (décision Jimmy « tout dans Préférences »).
+>
+> **Déviation** : glyphe `settings` ajouté (engrenage) et utilisé pour l'entrée menu + le titre du modal.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Un vrai écran de **Préférences** (modal) qui regroupe les réglages aujourd'hui éparpillés dans le menu compte (display name, thème, shared store) + une section **Support** avec un bouton « Open logs » qui ouvre le dossier de logs du CLI. Le menu compte (AvatarMenu) est allégé : identité + « Preferences… » + Sign out.

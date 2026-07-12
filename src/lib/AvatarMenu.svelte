@@ -26,7 +26,7 @@
   </div>
   <div class="div"></div>
   <button class="action" onclick={() => { onclose(); onpreferences() }}>
-    <Icon name="edit" size={15} /> Preferences…
+    <Icon name="settings" size={15} /> Preferences…
   </button>
   <button class="action out" onclick={doSignOut} disabled={!!repo.busy}>
     <Icon name="external" size={15} /> Sign out
