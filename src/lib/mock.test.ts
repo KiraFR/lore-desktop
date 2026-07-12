@@ -267,3 +267,16 @@ describe('mock shared store', () => {
     expect((await mock.sharedStoreStatus()).exists).toBe(false)
   })
 })
+
+describe('mock restoreFile', () => {
+  it('adds the restored file as a pending change (held by you when it was free)', async () => {
+    const repo = 'C:/repos/restore'
+    const before = await mock.getStatus(repo)
+    const hadIt = before.files.some((f) => f.path === 'Content/Maps/Level_01.umap')
+    await mock.restoreFile(repo, 'Content/Maps/Level_01.umap', 'deadbeef')
+    const after = await mock.getStatus(repo)
+    const f = after.files.find((x) => x.path === 'Content/Maps/Level_01.umap')
+    expect(f, hadIt ? 'file already present' : 'file now pending').toBeTruthy()
+    expect(f!.lockedBy).toBe('you')
+  })
+})

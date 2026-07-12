@@ -360,6 +360,22 @@ export const mock: LoreApi = {
     }
     stateFor(repoPath).revisionNumber = 3 // time-traveled → below the head (5)
   },
+  async restoreFile(repoPath: string, path: string, _revision: string, onProgress?: (p: OpProgress) => void) {
+    for (let i = 1; i <= 6; i++) {
+      await delay(70)
+      onProgress?.({ done: i, total: 6, unit: 'files' })
+    }
+    const s = stateFor(repoPath)
+    const existing = s.files.find((f) => f.path === path)
+    if (existing) {
+      existing.action = 'modify'
+    } else {
+      s.files = [
+        { path, action: 'add', isBinary: /\.(umap|uasset|png|wav|obj|fbx)$/i.test(path), size: 2_400_000, lockedBy: 'you' },
+        ...s.files,
+      ]
+    }
+  },
   async pushedLockFiles(_repoPath: string) {
     await delay(150)
     // Stand-in for the real diff∩locks: every lock I currently hold.

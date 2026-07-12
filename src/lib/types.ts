@@ -206,6 +206,8 @@ export interface LoreApi {
   sync(repoPath: string, onProgress?: (p: OpProgress) => void): Promise<void>
   /** Time-travel the working copy to a revision (hash). Progress ticks stream via onProgress. */
   syncToRevision(repoPath: string, revision: string, onProgress?: (p: OpProgress) => void): Promise<void>
+  /** Restore one file to its content at `revision` as a working change (LOCAL — nothing pushed). Progress ticks stream via onProgress. */
+  restoreFile(repoPath: string, path: string, revision: string, onProgress?: (p: OpProgress) => void): Promise<void>
   /** Files the current user holds locked that are part of the pending push. */
   pushedLockFiles(repoPath: string): Promise<string[]>
   setLock(repoPath: string, path: string, lock: boolean): Promise<void>
