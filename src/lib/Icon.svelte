@@ -29,6 +29,7 @@
     pause: 'M6 4h4v16H6z M14 4h4v16h-4z',
     repeat: 'M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3',
     volume: 'M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07',
+    volumeOff: 'M11 5L6 9H2v6h4l5 4V5z M23 9l-6 6 M17 9l6 6',
   }
 </script>
 

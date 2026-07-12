@@ -14,6 +14,7 @@
   let duration = $state(0)
   let loop = $state(false)
   let volume = $state(Math.min(1, Math.max(0, Number(localStorage.getItem(VOLUME_KEY) ?? '1') || 0)))
+  let muted = $state(false)
   let peaks = $state<number[] | null>(null)
   // sampleRate is the SOURCE rate (WAV header) — decodeAudioData resamples to
   // the device rate, so its sampleRate would lie; null hides the kHz segment.
@@ -39,8 +40,11 @@
     }
   })
   $effect(() => { if (audio) audio.loop = loop })
+  // `muted` zeroes the output while remembering the level to restore. Only the
+  // level (not the mute flag) is persisted.
+  const shownVol = $derived(muted ? 0 : volume)
   $effect(() => {
-    if (audio) audio.volume = volume
+    if (audio) audio.volume = shownVol
     localStorage.setItem(VOLUME_KEY, String(volume))
   })
 
@@ -91,6 +95,30 @@
     if (e.key === 'ArrowLeft') { e.preventDefault(); audio.currentTime = Math.max(0, audio.currentTime - 1) }
   }
 
+  // Custom volume slider — the native <input type=range> only responded to a
+  // click, not a drag (its bind:value write-back fought the drag). This reuses
+  // the waveform's pointer-capture pattern, which drags smoothly.
+  let volEl = $state<HTMLDivElement>()
+  let volDrag = false
+  function volAt(e: PointerEvent) {
+    if (!volEl) return
+    const r = volEl.getBoundingClientRect()
+    volume = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+    muted = false
+  }
+  function onVolDown(e: PointerEvent) { volDrag = true; volEl?.setPointerCapture(e.pointerId); volAt(e) }
+  function onVolMove(e: PointerEvent) { if (volDrag) volAt(e) }
+  function onVolUp() { volDrag = false }
+  function onVolKey(e: KeyboardEvent) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); volume = Math.min(1, +(volume + 0.05).toFixed(2)); muted = false }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); volume = Math.max(0, +(volume - 0.05).toFixed(2)); muted = false }
+  }
+  function toggleMute() {
+    // Unmuting a level-0 slider gives a sensible default rather than staying silent.
+    if (muted) { muted = false; if (volume === 0) volume = 0.5 }
+    else muted = true
+  }
+
   const progress = $derived(duration > 0 ? current / duration : 0)
   const chLabel = $derived(!info ? '' : info.channels === 1 ? 'mono' : info.channels === 2 ? 'stereo' : `${info.channels} ch`)
   const fmtLabel = $derived.by(() => {
@@ -130,7 +158,17 @@
     <button class="loopbtn" class:on={loop} onclick={() => (loop = !loop)} title="Loop playback">
       <Icon name="repeat" size={13} /> Loop
     </button>
-    <span class="vol"><Icon name="volume" size={14} /><input type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" /></span>
+    <span class="vol">
+      <button class="mute" onclick={toggleMute} aria-label={shownVol === 0 ? 'Unmute' : 'Mute'} title={shownVol === 0 ? 'Unmute' : 'Mute'}>
+        <Icon name={shownVol === 0 ? 'volumeOff' : 'volume'} size={14} />
+      </button>
+      <div class="vslider" bind:this={volEl} role="slider" tabindex="0" aria-label="Volume"
+           aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(shownVol * 100)}
+           onpointerdown={onVolDown} onpointermove={onVolMove} onpointerup={onVolUp} onkeydown={onVolKey}>
+        <div class="vtrack"><div class="vfill" style="width:{shownVol * 100}%"></div></div>
+        <div class="vthumb" style="left:{shownVol * 100}%"></div>
+      </div>
+    </span>
     <span class="fmt">{fmtLabel}</span>
   </div>
 </div>
@@ -151,7 +189,13 @@
   .ctrl { display: flex; align-items: center; gap: 14px; margin-top: 8px; padding-left: 50px; }
   .loopbtn { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; padding: 3px 9px; border-radius: 6px; }
   .loopbtn.on { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
-  .vol { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); }
-  .vol input { width: 70px; accent-color: var(--accent); }
+  .vol { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); }
+  .mute { padding: 2px; border: none; background: transparent; color: var(--text-muted); display: grid; place-items: center; border-radius: 5px; }
+  .mute:hover { color: var(--text); background: var(--panel-hover); }
+  .vslider { position: relative; width: 80px; height: 16px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+  .vslider:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .vtrack { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .vfill { height: 100%; background: var(--accent); border-radius: 2px; }
+  .vthumb { position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 2px var(--panel); }
   .fmt { margin-left: auto; font-size: 11px; color: var(--text-dim); }
 </style>
