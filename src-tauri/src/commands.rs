@@ -1139,8 +1139,11 @@ fn head_revision_from(events: &[LoreEvent]) -> Option<String> {
 /// disk but moves the repo-wide synced pointer, so we round-trip: scoped sync to
 /// `revision`, read the bytes, sync back to the head, write the bytes back. The
 /// file then shows as a pending add/modify. Guards (clean tree, locks) live in
-/// the frontend. On any failure after the first sync we best-effort sync back to
-/// the head so the repo is never left time-traveled.
+/// the frontend. If reading the restored bytes fails we best-effort sync back to
+/// the head first. (If the sync-back itself fails there's no safe auto-recovery —
+/// the repo is left time-traveled; the caller surfaces the error and the "behind"
+/// chip, and a manual sync restores it. Nothing is half-written: the bytes are
+/// only written after a successful sync-back.)
 #[tauri::command]
 pub async fn lore_restore_file(
     app: tauri::AppHandle,
