@@ -1,10 +1,11 @@
 import { api } from './api'
 import { session } from './session.svelte'
 import { clearThumbs } from './thumbs.svelte'
-import { toastError, toastAction } from './toast'
+import { toastError, toastAction, toastInfo } from './toast'
 import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
 import { opProgress } from './opProgress.svelte'
 import { isNonFastForwardPush, errorMessage } from './pushErrors'
+import { setView } from './ui.svelte'
 import type { Branch, Commit, LockEntry, StatusResult } from './types'
 
 const HISTORY_PAGE = 200
@@ -175,6 +176,48 @@ export const syncToRevision = (revision: string) => act('sync', async (p) => {
   try { await api.syncToRevision(p, revision, (prog) => { opProgress.sync = prog }) }
   finally { opProgress.sync = null }
 })
+
+// Restore one file to an older revision as a pending change (LOCAL). Callers
+// (FileHistorySection) only enable this when the tree is clean and we're at the
+// tip — see restoreGuard. Lock handling per the design: free → acquire the lock
+// so the change is committable; teammate-locked → restore anyway without locking
+// (it lands in the excluded "Locked by teammates" section); mine → just restore.
+export async function restoreFile(path: string, revision: string, lockHolder: string | null) {
+  const p = session.config.currentRepo
+  if (!p || repo.busy) return
+  const teammateLocked = lockHolder != null && lockHolder !== 'you'
+  const short = path.split(/[\\/]/).pop() ?? path
+  repo.busy = 'sync'
+  try {
+    if (lockHolder == null) {
+      // Free file → take the lock first so the restored change is committable.
+      try {
+        await api.setLock(p, path, true)
+      } catch (e) {
+        repo.busy = ''
+        toastError("Couldn't lock the file — someone may hold it now", e)
+        return
+      }
+    }
+    try {
+      await api.restoreFile(p, path, revision, (prog) => { opProgress.sync = prog })
+    } finally {
+      opProgress.sync = null
+    }
+  } catch (e) {
+    repo.busy = ''
+    toastError('Restore failed', e)
+    return
+  }
+  await refreshStatus() // resets repo.busy in its finally; surfaces the pending change
+  refreshLocks(true)
+  setView('changes')
+  toastInfo(
+    teammateLocked
+      ? `Restored ${short} — you can't commit it while someone else holds the lock`
+      : `Restored ${short} — review and commit it in Changes`,
+  )
+}
 
 // Push, then offer to release the locks the user held on files that were part of
 // this push (the lock-workflow's "done editing" step). The candidate set must be
