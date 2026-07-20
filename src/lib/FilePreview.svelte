@@ -4,6 +4,7 @@
   import { session } from './session.svelte'
   import { api } from './api'
   import { confirmAction } from './confirm'
+  import { toastError } from './toast'
   import Icon from './Icon.svelte'
   import MediaPreview from './MediaPreview.svelte'
   import FileHistorySection from './FileHistorySection.svelte'
@@ -12,6 +13,16 @@
   import { typeName } from './fileTypes'
 
   let { file }: { file: ChangedFile | null } = $props()
+
+  const absPath = (p: string) => `${session.config.currentRepo}/${p}`
+
+  async function doReveal(f: ChangedFile) {
+    try { await api.revealPath(absPath(f.path)) } catch (e) { toastError('Action failed', e) }
+  }
+
+  async function doOpen(f: ChangedFile) {
+    try { await api.openPath(absPath(f.path)) } catch (e) { toastError('Action failed', e) }
+  }
 
   async function doDiscard(f: ChangedFile) {
     const ok = await confirmAction(`Discard changes to ${f.path}? This can't be undone.`, 'Discard changes')
@@ -77,6 +88,14 @@
           <div class="fp muted">{dirName(file.path)}</div>
         </div>
         <span class="badge {badge.c}">{badge.t}</span>
+        {#if file.action !== 'delete'}
+          <button class="hact" onclick={() => doReveal(file)} title="Reveal in File Explorer">
+            <Icon name="folder" size={13} /> Reveal
+          </button>
+          <button class="hact" onclick={() => doOpen(file)} title="Open with default app">
+            <Icon name="external" size={13} /> Open
+          </button>
+        {/if}
         <button class="discard" onclick={() => doDiscard(file)} disabled={!!repo.busy} title="Discard changes to this file">
           <Icon name="history" size={13} /> Discard
         </button>
@@ -145,6 +164,8 @@
   .badge.modified { background: var(--warn-bg); color: var(--warn-text); }
   .badge.added { background: rgba(63, 185, 80, .15); color: var(--added); }
   .badge.deleted { background: rgba(248, 81, 73, .15); color: var(--deleted); }
+  .hact { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+  .hact:hover { color: var(--text); }
   .discard { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
   .discard:hover:not(:disabled) { color: var(--deleted); border-color: var(--deleted); }
   .textnote { display: flex; align-items: center; gap: 12px; padding: 22px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; }
