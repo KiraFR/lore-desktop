@@ -39,6 +39,53 @@
   const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
   const behind = $derived(chipFor(repo.status)?.kind === 'behind')
 
+  // Multi-selection (independent of the staging checkboxes). `multi` is the
+  // set of highlighted rows; `anchorPath` remembers the last plain click so
+  // shift+click can select a range in DISPLAYED order.
+  let multi = $state(new Set<string>())
+  let anchorPath: string | null = null
+  const shown = $derived([...shownCommittable, ...shownLocked])
+
+  function selectSingle(path: string) {
+    multi = new Set([path])
+    anchorPath = path
+    onselect(path)
+  }
+
+  function rowClick(e: MouseEvent, path: string) {
+    if (e.shiftKey && anchorPath !== null) {
+      const order = shown.map((f) => f.path)
+      const a = order.indexOf(anchorPath)
+      const b = order.indexOf(path)
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a <= b ? [a, b] : [b, a]
+        multi = new Set(order.slice(lo, hi + 1))
+        onselect(path)
+        return
+      }
+      // Anchor filtered out of view — fall through to a plain click.
+    } else if (e.ctrlKey || e.metaKey) {
+      const next = new Set(multi)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+        onselect(path)
+      }
+      multi = next
+      return
+    }
+    selectSingle(path)
+  }
+
+  // Escape collapses a multi-selection back to the single current selection.
+  function collapseMulti() {
+    if (multi.size <= 1) return
+    const sp = selectedPath !== null && multi.has(selectedPath) ? selectedPath : [...multi][0]
+    multi = new Set([sp])
+    anchorPath = sp
+  }
+
   const committablePathKey = $derived(parts.committable.map((f) => f.path).join('\n'))
   // Default: every committable file staged. Teammate-locked files are NEVER
   // staged — exclusion by construction (doCommit excludes everything unstaged),
@@ -56,6 +103,25 @@
     const prevStaged = untrack(() => staged)
     staged = new Set(committable.filter((p) => !prevCommittable.has(p) || prevStaged.has(p)))
     prevCommittable = new Set(committable)
+  })
+
+  // Keep the multi-selection in sync with the file set: purge paths that
+  // disappeared on a status refresh, and if the selection ends up empty while
+  // files remain, fall back to the single current selection. Keyed on the path
+  // set so enrichment merges and user clicks don't churn it.
+  const allPathKey = $derived(files.map((f) => f.path).join('\n'))
+  $effect(() => {
+    allPathKey
+    const valid = new Set(untrack(() => files).map((f) => f.path))
+    const cur = untrack(() => multi)
+    const kept = [...cur].filter((p) => valid.has(p))
+    let next = kept.length !== cur.size ? new Set(kept) : cur
+    if (next.size === 0 && valid.size > 0) {
+      const sp = untrack(() => selectedPath)
+      if (sp !== null && valid.has(sp)) next = new Set([sp])
+    }
+    if (next !== cur) multi = next
+    if (anchorPath !== null && !valid.has(anchorPath)) anchorPath = null
   })
 
   // Queue row thumbnails for previewable images (deleted files have no working copy).
@@ -80,13 +146,62 @@
 
   let ctxMenu = $state<{ x: number; y: number; path: string } | null>(null)
 
-  function ctxItems(path: string) {
+  function openCtxMenu(e: MouseEvent, path: string) {
+    e.preventDefault()
+    // Right-click outside the multi-selection selects that row alone first.
+    if (!(multi.size > 1 && multi.has(path))) {
+      multi = new Set([path])
+      anchorPath = path
+    }
+    ctxMenu = { x: e.clientX, y: e.clientY, path }
+  }
+
+  type CtxItem = { label: string; icon?: string; danger?: boolean; run: () => void }
+
+  // Bulk actions over the multi-selection. Each loop awaits sequentially (each
+  // action refreshes status on its own — acceptable) and keeps going past
+  // per-item failures. No Reveal/Open in grouped mode.
+  function ctxItemsMulti(): CtxItem[] {
+    const sel = files.filter((f) => multi.has(f.path))
+    const paths = sel.map((f) => f.path)
+    const lockable = sel.filter((f) => !f.lockedBy).map((f) => f.path)
+    const unlockable = sel.filter((f) => f.lockedBy === 'you').map((f) => f.path)
+    const forEachPath = (ps: string[], fn: (p: string) => void | Promise<void>) => async () => {
+      for (const p of ps) {
+        try { await fn(p) } catch (e) { toastError('Action failed', e) }
+      }
+    }
+    const items: CtxItem[] = []
+    if (lockable.length > 0) {
+      items.push({ label: `Lock ${lockable.length} file${lockable.length === 1 ? '' : 's'}`, icon: 'lock', run: forEachPath(lockable, (p) => setLock(p, true)) })
+    }
+    if (unlockable.length > 0) {
+      items.push({ label: `Unlock ${unlockable.length} file${unlockable.length === 1 ? '' : 's'}`, icon: 'lock', run: forEachPath(unlockable, (p) => setLock(p, false)) })
+    }
+    items.push({
+      label: `Copy ${paths.length} paths`, icon: 'file',
+      run: async () => {
+        try { await navigator.clipboard.writeText(paths.join('\n')) } catch (e) { toastError('Action failed', e) }
+      },
+    })
+    items.push({
+      label: `Discard ${paths.length} files…`, icon: 'history', danger: true,
+      run: async () => {
+        const ok = await confirmAction(`Discard changes to ${paths.length} files? This can't be undone.`, 'Discard changes')
+        if (ok) await forEachPath(paths, (p) => discardFile(p))()
+      },
+    })
+    return items
+  }
+
+  function ctxItems(path: string): CtxItem[] {
+    if (multi.size > 1 && multi.has(path)) return ctxItemsMulti()
     const f = files.find((x) => x.path === path)
     const abs = `${session.config.currentRepo}/${path}`
     const wrap = (fn: () => void | Promise<void>) => async () => {
       try { await fn() } catch (e) { toastError('Action failed', e) }
     }
-    const items: { label: string; icon?: string; danger?: boolean; run: () => void }[] = []
+    const items: CtxItem[] = []
     if (f?.action !== 'delete') {
       // A deleted file has no working copy to reveal or open.
       items.push({ label: 'Reveal in File Explorer', icon: 'folder', run: wrap(() => api.revealPath(abs)) })
@@ -115,7 +230,7 @@
 
 <section class="changes">
   <div class="colhead">Changes
-    <span class="n">{filter.trim() ? `${shownCount} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}</span>
+    <span class="n">{filter.trim() ? `${shownCount} of ${files.length} files` : `${files.length} ${files.length === 1 ? 'file' : 'files'}`}{multi.size > 1 ? ` · ${multi.size} selected` : ''}</span>
     {#if summary.length > 0}
       <span class="sum" aria-label="Change counters">
         {#each summary as p (p.cls)}<span class="p {p.cls}">{p.text}</span>{/each}
@@ -139,8 +254,8 @@
       {#if shownCommittable.length > 0}
         <ul>
           {#each shownCommittable as f (f.path)}
-            <li class="file" class:sel={f.path === selectedPath}
-                oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
+            <li class="file" class:sel={multi.has(f.path)}
+                oncontextmenu={(e) => openCtxMenu(e, f.path)}>
               <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
               {@render fileRow(f, false)}
             </li>
@@ -154,8 +269,8 @@
         </div>
         <ul aria-labelledby="locked-head">
           {#each shownLocked as f (f.path)}
-            <li class="file locked" class:sel={f.path === selectedPath}
-                oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, path: f.path } }}>
+            <li class="file locked" class:sel={multi.has(f.path)}
+                oncontextmenu={(e) => openCtxMenu(e, f.path)}>
               {@render fileRow(f, true)}
             </li>
           {/each}
@@ -167,8 +282,11 @@
   {#snippet fileRow(f: ChangedFile, locked: boolean)}
     {@const d = formatDelta(f)}
     <div class="rowmain" role="button" tabindex="0"
-         onclick={() => onselect(f.path)}
-         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect(f.path) } }}>
+         onclick={(e) => rowClick(e, f.path)}
+         onkeydown={(e) => {
+           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSingle(f.path) }
+           else if (e.key === 'Escape') collapseMulti()
+         }}>
       <span class="tag {glyph[f.action]?.c}">{glyph[f.action]?.v ?? '?'}</span>
       {#if listThumbs.get(f.path)}<img class="rowthumb" src={listThumbs.get(f.path)} alt="" />{/if}
       <span class="path"><span class="dir">{dir(f.path)}</span>{base(f.path)}</span>
@@ -215,7 +333,7 @@
   .file:hover { background: var(--panel); }
   .file.sel { background: var(--accent-soft); }
   .file input { width: 14px; height: 14px; accent-color: var(--accent); flex-shrink: 0; margin: 0; }
-  .rowmain { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; padding: 5px 0; }
+  .rowmain { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; padding: 5px 0; user-select: none; }
   .tag { width: 1.1em; text-align: center; font-weight: 500; flex-shrink: 0; }
   .rowthumb { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; flex: none; }
   .tag.added { color: var(--added); } .tag.modified { color: var(--modified); } .tag.deleted { color: var(--deleted); }
