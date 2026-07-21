@@ -2779,6 +2779,46 @@ pub fn os_open_path(path: String) -> Result<(), String> {
     }
 }
 
+/// Pure read behind `lore_read_ignore` (testable without Tauri). `None` when
+/// the file is absent; the matching itself is front-side (src/lib/loreIgnore.ts).
+fn read_ignore_impl(repo_path: &str) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(std::path::Path::new(repo_path).join(".loreignore")) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("couldn't read .loreignore: {e}")),
+    }
+}
+
+/// Raw contents of the repo-root `.loreignore`, or `None` when absent.
+#[tauri::command]
+pub async fn lore_read_ignore(repo_path: String) -> Result<Option<String>, String> {
+    blocking(move || read_ignore_impl(&repo_path)).await
+}
+
+#[cfg(test)]
+mod read_ignore_tests {
+    use super::read_ignore_impl;
+
+    #[test]
+    fn reads_the_file_when_present() {
+        let dir = std::env::temp_dir().join("lore-desktop-read-ignore-present");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".loreignore"), "Saved/\n*.tmp\n").unwrap();
+        let got = read_ignore_impl(dir.to_str().unwrap()).unwrap();
+        assert_eq!(got.as_deref(), Some("Saved/\n*.tmp\n"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn none_when_the_file_is_absent() {
+        let dir = std::env::temp_dir().join("lore-desktop-read-ignore-absent");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_file(dir.join(".loreignore"));
+        assert_eq!(read_ignore_impl(dir.to_str().unwrap()).unwrap(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// Pure check behind `os_path_exists` (testable without Tauri).
 fn path_exists_impl(path: &str) -> bool {
     std::path::Path::new(path).is_dir()

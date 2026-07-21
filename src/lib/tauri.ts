@@ -41,6 +41,7 @@ export const tauriApi: LoreApi = {
   listRepos: (serverUrl) => invoke<RepoEntry[]>('lore_repositories', { serverUrl }),
   getRepositoryInfo: (repoPath) => invoke<RepositoryInfo>('lore_repository_info', { repoPath }),
   getStatus: (repoPath) => invoke<StatusResult>('lore_status', { repoPath }),
+  readIgnoreFile: (repoPath) => invoke<string | null>('lore_read_ignore', { repoPath }),
   fileSizes: (repoPath, paths) => invoke<Record<string, number>>('lore_file_sizes', { repoPath, paths }),
   getDiff: (repoPath, path) => invoke<DiffLine[]>('lore_diff', { repoPath, path }),
   getFileDiffAt: (repoPath, path, source, target) => invoke<DiffLine[]>('lore_diff_revs', { repoPath, path, source, target }),

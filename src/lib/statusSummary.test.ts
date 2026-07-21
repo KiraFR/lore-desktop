@@ -15,4 +15,14 @@ describe('summaryParts', () => {
     ])
     expect(summaryParts({ adds: 0, mods: 4, dels: 0 })).toEqual([{ text: '~4', cls: 'modified' }])
   })
+  it('appends a muted "N ignored" segment when files were filtered', () => {
+    expect(summaryParts({ adds: 1, mods: 0, dels: 0 }, 2)).toEqual([
+      { text: '+1', cls: 'added' },
+      { text: '2 ignored', cls: 'ignored' },
+    ])
+  })
+  it('shows the ignored segment even without a wire summary, never at zero', () => {
+    expect(summaryParts(undefined, 3)).toEqual([{ text: '3 ignored', cls: 'ignored' }])
+    expect(summaryParts({ adds: 1, mods: 0, dels: 0 }, 0)).toEqual([{ text: '+1', cls: 'added' }])
+  })
 })

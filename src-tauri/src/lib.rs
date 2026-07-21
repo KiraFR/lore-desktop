@@ -30,6 +30,7 @@ pub fn run() {
         commands::lore_is_authenticated,
         commands::lore_sign_in,
         commands::lore_status,
+        commands::lore_read_ignore,
         commands::lore_history,
         commands::lore_repositories,
         commands::lore_repository_info,

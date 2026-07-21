@@ -195,6 +195,8 @@ export interface LoreApi {
   /** Turn off global auto-use (the store is kept). */
   sharedStoreDisable(): Promise<void>
   getStatus(repoPath: string): Promise<StatusResult>
+  /** Raw contents of the repo-root .loreignore, or null when absent. Matching is front-side (loreIgnore.ts). */
+  readIgnoreFile(repoPath: string): Promise<string | null>
   /** Repository-revision sizes of the given files (ONE batch `file info` call) — the "old" side of the size delta. */
   fileSizes(repoPath: string, paths: string[]): Promise<Record<string, number>>
   getDiff(repoPath: string, path: string): Promise<DiffLine[]>

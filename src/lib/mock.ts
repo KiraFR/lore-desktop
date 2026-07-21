@@ -113,6 +113,10 @@ function seedFiles(): ChangedFile[] {
     { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204 },
     { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512 },
     { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0 },
+    // Matched by the mock .loreignore (Saved/ + *.tmp) — the store filters them
+    // out, which makes the ignore feature visible in the browser preview.
+    { path: 'Saved/autosave.tmp', action: 'add', isBinary: false, size: 4096 },
+    { path: 'Saved/Logs/game.log', action: 'modify', isBinary: false, size: 12288 },
   ]
 }
 
@@ -297,6 +301,10 @@ export const mock: LoreApi = {
       },
       files: [...s.files],
     } as StatusResult
+  },
+  async readIgnoreFile(_repoPath: string) {
+    await delay(80)
+    return '# Editor junk\nSaved/\n*.tmp\n'
   },
   async fileSizes(_repoPath: string, paths: string[]) {
     await delay(400)

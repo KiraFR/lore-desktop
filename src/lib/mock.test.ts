@@ -165,6 +165,15 @@ describe('mock api', () => {
     expect(a.kind).toBe('audio')
   })
 
+  it('readIgnoreFile serves rules that match seeded files (visible filter in preview)', async () => {
+    const text = await mock.readIgnoreFile('C:/repos/game')
+    expect(text).toContain('Saved/')
+    expect(text).toContain('*.tmp')
+    const s = await mock.getStatus('C:/repos/ignoreseed')
+    expect(s.files.some((f) => f.path === 'Saved/autosave.tmp')).toBe(true)
+    expect(s.files.some((f) => f.path === 'Saved/Logs/game.log')).toBe(true)
+  })
+
   it('pathExists honours the missing-repos dev lever', async () => {
     localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/gone']))
     expect(await mock.pathExists('C:/repos/gone')).toBe(false)

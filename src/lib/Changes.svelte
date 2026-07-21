@@ -36,7 +36,7 @@
   const shownLocked = $derived(filterByQuery(parts.lockedByOthers, filter))
   const shownCount = $derived(shownCommittable.length + shownLocked.length)
   const branch = $derived(repo.status?.branch ?? 'main')
-  const summary = $derived(summaryParts(repo.status?.summary))
+  const summary = $derived(summaryParts(repo.status?.summary, repo.ignoredCount))
   const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
   const behind = $derived(chipFor(repo.status)?.kind === 'behind')
 
@@ -385,6 +385,7 @@
   .sum .added { color: var(--added); }
   .sum .modified { color: var(--modified); }
   .sum .deleted { color: var(--deleted); }
+  .sum .ignored { color: var(--text-muted); }
   .filter { display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .pad { padding: 8px 12px; }
   .filelist { flex: 1; overflow: auto; }
