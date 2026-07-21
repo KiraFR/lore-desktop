@@ -8,6 +8,7 @@
   import { composeCommitMessage } from './commitMessage'
   import { formatDelta } from './sizeFormat'
   import { partitionByLock, filterByQuery } from './changesPartition'
+  import { stepPath, rangePaths, stagePartition } from './changesKeyboard'
   import type { ChangedFile } from './types'
   import { listThumbs, requestThumb } from './thumbs.svelte'
   import { confirmAction } from './confirm'
@@ -54,12 +55,9 @@
 
   function rowClick(e: MouseEvent, path: string) {
     if (e.shiftKey && anchorPath !== null) {
-      const order = shown.map((f) => f.path)
-      const a = order.indexOf(anchorPath)
-      const b = order.indexOf(path)
-      if (a >= 0 && b >= 0) {
-        const [lo, hi] = a <= b ? [a, b] : [b, a]
-        multi = new Set(order.slice(lo, hi + 1))
+      const range = rangePaths(shown.map((f) => f.path), anchorPath, path)
+      if (range) {
+        multi = new Set(range)
         onselect(path)
         return
       }
@@ -84,6 +82,51 @@
     const sp = selectedPath !== null && multi.has(selectedPath) ? selectedPath : [...multi][0]
     multi = new Set([sp])
     anchorPath = sp
+  }
+
+  let listEl = $state<HTMLDivElement>()
+
+  function scrollRowIntoView(path: string) {
+    listEl?.querySelector(`[data-path="${path.replace(/"/g, '\\"')}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+
+  // Keyboard selection over the DISPLAYED order. The handler sits on the list
+  // container: the filter input and the commit composer live outside it, so
+  // their keystrokes never reach here; the staging checkboxes DO live inside,
+  // hence the target guard.
+  function listKeydown(e: KeyboardEvent) {
+    if (e.target instanceof HTMLInputElement) return
+    if (e.key === 'Escape') { collapseMulti(); return }
+    const order = shown.map((f) => f.path)
+    if (order.length === 0) return
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault()
+      multi = new Set(order)
+      return
+    }
+    let target: string | null
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      target = stepPath(order, selectedPath, e.key === 'ArrowDown' ? 1 : -1)
+    } else if (e.key === 'Home' || e.key === 'End') {
+      target = e.key === 'Home' ? order[0] : order[order.length - 1]
+    } else {
+      return
+    }
+    e.preventDefault()
+    if (target === null) return
+    if (e.shiftKey && anchorPath !== null) {
+      // Same range semantics as shift+click: the anchor stays, the active end
+      // moves with the arrows.
+      const range = rangePaths(order, anchorPath, target)
+      if (range) {
+        multi = new Set(range)
+        onselect(target)
+        scrollRowIntoView(target)
+        return
+      }
+    }
+    selectSingle(target)
+    scrollRowIntoView(target)
   }
 
   const committablePathKey = $derived(parts.committable.map((f) => f.path).join('\n'))
@@ -172,6 +215,16 @@
       }
     }
     const items: CtxItem[] = []
+    // Staging is purely front-side (the local `staged` set) — no API call.
+    // stagePartition walks the committable paths only, so teammate-locked
+    // rows in the selection can never end up staged.
+    const { toStage, toUnstage } = stagePartition(multi, parts.committable.map((f) => f.path), staged)
+    if (toStage.length > 0) {
+      items.push({ label: `Stage ${toStage.length} file${toStage.length === 1 ? '' : 's'}`, icon: 'check', run: () => { staged = new Set([...staged, ...toStage]) } })
+    }
+    if (toUnstage.length > 0) {
+      items.push({ label: `Unstage ${toUnstage.length} file${toUnstage.length === 1 ? '' : 's'}`, run: () => { const next = new Set(staged); for (const p of toUnstage) next.delete(p); staged = next } })
+    }
     if (lockable.length > 0) {
       items.push({ label: `Lock ${lockable.length} file${lockable.length === 1 ? '' : 's'}`, icon: 'lock', run: forEachPath(lockable, (p) => setLock(p, true)) })
     }
@@ -202,6 +255,11 @@
       try { await fn() } catch (e) { toastError('Action failed', e) }
     }
     const items: CtxItem[] = []
+    if (f && !(f.lockedBy && f.lockedBy !== 'you')) {
+      // Committable rows only — a teammate-locked file is never stageable.
+      if (staged.has(path)) items.push({ label: 'Unstage', run: () => toggle(path) })
+      else items.push({ label: 'Stage', icon: 'check', run: () => toggle(path) })
+    }
     if (f?.action !== 'delete') {
       // A deleted file has no working copy to reveal or open.
       items.push({ label: 'Reveal in File Explorer', icon: 'folder', run: wrap(() => api.revealPath(abs)) })
@@ -240,7 +298,9 @@
 
   <input class="filter" bind:value={filter} placeholder="Filter files" />
 
-  <div class="filelist">
+  <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+  <div class="filelist" role="listbox" aria-label="Changed files" aria-multiselectable="true"
+       tabindex="0" bind:this={listEl} onkeydown={listKeydown}>
     {#if repo.busy === 'status' && !repo.status}
       <p class="muted pad">Scanning…</p>
     {:else if files.length === 0}
@@ -254,7 +314,7 @@
       {#if shownCommittable.length > 0}
         <ul>
           {#each shownCommittable as f (f.path)}
-            <li class="file" class:sel={multi.has(f.path)}
+            <li class="file" role="option" class:sel={multi.has(f.path)} data-path={f.path} aria-selected={multi.has(f.path)}
                 oncontextmenu={(e) => openCtxMenu(e, f.path)}>
               <input type="checkbox" checked={staged.has(f.path)} onchange={() => toggle(f.path)} title="Stage this file" aria-label="Stage {f.path}" />
               {@render fileRow(f, false)}
@@ -269,7 +329,7 @@
         </div>
         <ul aria-labelledby="locked-head">
           {#each shownLocked as f (f.path)}
-            <li class="file locked" class:sel={multi.has(f.path)}
+            <li class="file locked" role="option" class:sel={multi.has(f.path)} data-path={f.path} aria-selected={multi.has(f.path)}
                 oncontextmenu={(e) => openCtxMenu(e, f.path)}>
               {@render fileRow(f, true)}
             </li>
@@ -328,6 +388,7 @@
   .filter { display: block; margin: 8px 12px; width: calc(100% - 24px); padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .pad { padding: 8px 12px; }
   .filelist { flex: 1; overflow: auto; }
+  .filelist:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .filelist ul { list-style: none; margin: 0; padding: 4px 0; }
   .file { display: flex; align-items: center; gap: 8px; padding: 2px 12px; }
   .file:hover { background: var(--panel); }
