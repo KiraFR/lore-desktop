@@ -1,6 +1,13 @@
 # Lore Desktop — .loreignore (ignore côté app)
 
-Validé par Jimmy le 2026-07-21. Contexte : la CLI Lore n'a **aucun** support ignore (vérifié sur pièce : pas de commande, pas de flag `--exclude`, pas de convention de fichier, rien dans `config.toml`). L'app fait `lore status --scan`, donc tout fichier de l'arbre apparaît dans Changes — bruit UE (`Saved/`, `Intermediate/`, `DerivedDataCache/`), Blender (`*.blend1`), etc. En attendant un ignore natif (manque remonté à l'équipe Lore), l'app filtre elle-même.
+> **⚠ ADDENDUM 2026-07-21 (post-implémentation) — le CLI supporte NATIVEMENT `.loreignore`.**
+> Découvert lors de la vérification réelle : totalement absent de l'aide CLI, mais `lore status --scan` lit `.loreignore` à la racine, exclut les chemins matchés et émet des événements `{"tagName":"filterExclude","data":{"reason":0,"path":"…"}}` (avec DOUBLONS possibles par chemin ; les dossiers exclus sortent comme une seule entrée). Le résumé wire est déjà ajusté. La **négation `!pattern` fonctionne** (testé : `*.tmp` + `!scratch.tmp` → `scratch.tmp` réapparaît) — la syntaxe native est donc plus riche que le sous-ensemble v1 ci-dessous, et le double filtrage front pouvait masquer à tort un fichier ré-inclus par `!`.
+>
+> **Architecture révisée (décision Jimmy : « on fait le filtre là où est le check de modification »)** : l'app réelle s'appuie sur le natif — `status_from` (Rust) compte les chemins `filterExclude` DÉDUPLIQUÉS → champ `ignoredCount` du StatusResultDto ; le front ne refiltre plus rien (suppression du filtrage dans `refreshStatus`, du garde merge, de l'API `readIgnoreFile`/`lore_read_ignore`). Le module `loreIgnore.ts` reste UNIQUEMENT pour que le mock simule le comportement natif (getStatus mock filtre sa liste et pose `ignoredCount`). Le segment « N ignored » lit `status.ignoredCount`. À remonter à l'équipe Lore : documenter `.loreignore` et `filterExclude` (et la sémantique de `reason`).
+>
+> Le corps ci-dessous décrit la v1 telle que livrée (`38b6d2e`) AVANT cette découverte — conservé pour l'historique ; la sémantique de matching du module reste valable pour le mock.
+
+Validé par Jimmy le 2026-07-21. Contexte : la CLI Lore n'a **aucun** support ignore *(faux — voir addendum ; l'aide CLI n'en mentionne rien : pas de commande, pas de flag `--exclude`, rien dans `config.toml`)*. L'app fait `lore status --scan`, donc tout fichier de l'arbre apparaît dans Changes — bruit UE (`Saved/`, `Intermediate/`, `DerivedDataCache/`), Blender (`*.blend1`), etc.
 
 ## Décisions (arbitrées avec Jimmy)
 
