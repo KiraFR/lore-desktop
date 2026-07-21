@@ -17,7 +17,7 @@ pub struct PreviewDto {
 const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 const IMAGE_EXTS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tga", "tif", "tiff", "dds", "exr", "hdr", "psd", "blend",
-    "uasset", "umap", "sbsar",
+    "uasset", "umap",
 ];
 
 const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx"];
@@ -116,7 +116,6 @@ fn decode(path: &Path, ext: &str) -> Result<image::RgbaImage, String> {
         "exr" | "hdr" => decode_hdr_like(path),
         "blend" => decode_blend(path),
         "uasset" | "umap" => decode_uasset(path),
-        "sbsar" => decode_sbsar(path),
         // Format is picked from the classified `ext`, not sniffed from the
         // on-disk file extension — a `~theirs` sidecar's real filename
         // (e.g. `tex.png~theirs`) isn't a format `image` recognizes.
@@ -326,42 +325,6 @@ fn decode_uasset(path: &Path) -> Result<image::RgbaImage, String> {
 /// UE thumbnails are ≤ 256 px; the 1024 cap rejects false magic hits
 /// inside source data.
 const UASSET_MAX_PX: u32 = 1024;
-
-/// Largest .sbsar archive entry worth extracting as an icon.
-const SBSAR_MAX_ICON_BYTES: u64 = 10 << 20;
-
-/// Pick the .sbsar entry most likely to be the published icon: prefer a
-/// `.png` whose name (case-insensitive) mentions `icon` or `thumbnail`,
-/// else the first `.png`. Entries over 10 MiB are never considered.
-fn pick_png_entry<'a>(entries: impl IntoIterator<Item = (&'a str, u64)>) -> Option<&'a str> {
-    let mut first = None;
-    for (name, size) in entries {
-        let lower = name.to_ascii_lowercase();
-        if !lower.ends_with(".png") || size == 0 || size > SBSAR_MAX_ICON_BYTES {
-            continue;
-        }
-        if lower.contains("icon") || lower.contains("thumbnail") {
-            return Some(name);
-        }
-        first = first.or(Some(name));
-    }
-    first
-}
-
-/// The icon PNG Substance Designer publishes inside a .sbsar (a plain 7z
-/// archive, typically `assemblies/content/…/icon*.png`). No Substance
-/// engine involved — just archive extraction.
-fn decode_sbsar(path: &Path) -> Result<image::RgbaImage, String> {
-    let mut z = sevenz_rust2::SevenZReader::open(path, sevenz_rust2::Password::empty())
-        .map_err(|e| e.to_string())?;
-    let name = pick_png_entry(
-        z.archive().files.iter().filter(|f| !f.is_directory).map(|f| (f.name.as_str(), f.size)),
-    )
-    .map(str::to_owned)
-    .ok_or("no PNG icon in archive")?;
-    let data = z.read_file(&name).map_err(|e| e.to_string())?;
-    image::load_from_memory(&data).map(|d| d.to_rgba8()).map_err(|e| e.to_string())
-}
 
 /// Parse the FPackageFileSummary far enough to locate ThumbnailTableOffset.
 /// The prefix (tag → NameOffset) is stable across UE 4.11+ and read
@@ -842,54 +805,6 @@ mod tests {
         let p = d.join("Cooked.uasset");
         std::fs::write(&p, noise(4096)).unwrap();
         assert_eq!(image_preview(&p, "uasset", 128, None).kind, "none");
-    }
-
-    /// Build a .7z on disk with the given (name, bytes) entries.
-    fn write_7z(path: &Path, entries: &[(&str, &[u8])]) {
-        let mut z = sevenz_rust2::SevenZWriter::create(path).unwrap();
-        for (name, data) in entries {
-            z.push_archive_entry(sevenz_rust2::SevenZArchiveEntry::new_file(name), Some(*data))
-                .unwrap();
-        }
-        z.finish().unwrap();
-    }
-
-    #[test]
-    fn sbsar_embedded_icon_decodes() {
-        let d = dir("sbsar");
-        let png = mini_png(6, 3);
-        let p = d.join("mat.sbsar");
-        write_7z(&p, &[("graph.xml", b"<xml/>"), ("assemblies/content/0000/icon1.png", &png)]);
-        let out = image_preview(&p, "sbsar", 128, None);
-        assert_eq!(out.kind, "image");
-        assert_eq!((out.width, out.height), (Some(6), Some(3)));
-    }
-
-    #[test]
-    fn sbsar_without_png_is_none() {
-        let d = dir("sbsarnone");
-        let p = d.join("mat.sbsar");
-        write_7z(&p, &[("graph.xml", b"<xml/>")]);
-        assert_eq!(image_preview(&p, "sbsar", 128, None).kind, "none");
-        let bad = d.join("bad.sbsar");
-        std::fs::write(&bad, noise(256)).unwrap(); // not a 7z at all
-        assert_eq!(image_preview(&bad, "sbsar", 128, None).kind, "none");
-    }
-
-    #[test]
-    fn pick_png_entry_prefers_icon_names_and_caps_size() {
-        // An icon-named entry beats an earlier plain PNG.
-        assert_eq!(
-            pick_png_entry(vec![("a.png", 10), ("sub/Icon_main.PNG", 10)]),
-            Some("sub/Icon_main.PNG")
-        );
-        // Otherwise the first PNG wins; non-PNG entries are ignored.
-        assert_eq!(
-            pick_png_entry(vec![("graph.xml", 10), ("first.png", 10), ("second.png", 10)]),
-            Some("first.png")
-        );
-        // Oversized or empty entries are never considered.
-        assert_eq!(pick_png_entry(vec![("huge_icon.png", 11 << 20), ("empty.png", 0)]), None);
     }
 
     #[test]

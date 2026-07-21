@@ -9,7 +9,6 @@ describe('isPreviewableImage', () => {
     expect(isPreviewableImage('Content/Chars/hero.blend')).toBe(true)
     expect(isPreviewableImage('Content/Meshes/SM_Crate.uasset')).toBe(true)
     expect(isPreviewableImage('Content/Maps/Arena.UMAP')).toBe(true)
-    expect(isPreviewableImage('Materials/Rock_Wall.sbsar')).toBe(true)
   })
   it('rejects everything else', () => {
     expect(isPreviewableImage('Source/main.cpp')).toBe(false)
@@ -18,6 +17,9 @@ describe('isPreviewableImage', () => {
     // .spp preview was dropped — its thumbnail lives in compressed HDF5 datasets,
     // not raw image bytes (verified on a real file). Shows a generic icon now.
     expect(isPreviewableImage('Painter/HeroSkin.spp')).toBe(false)
+    // .sbsar preview was dropped — the 7z icon extraction was never validated
+    // on a real file. Shows a generic icon now.
+    expect(isPreviewableImage('Materials/Rock_Wall.sbsar')).toBe(false)
   })
 })
 

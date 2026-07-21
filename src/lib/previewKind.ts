@@ -1,5 +1,5 @@
 /** Shared classifier: files whose rows/panels can show an image thumbnail. */
-const IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif|tga|tiff?|dds|exr|hdr|psd|blend|uasset|umap|sbsar)$/i
+const IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif|tga|tiff?|dds|exr|hdr|psd|blend|uasset|umap)$/i
 
 /** Exact sidecar naming the CLI materializes for the incoming version of a
  *  conflicted file during a merge — pinned by the P2 item-2 real-merge
