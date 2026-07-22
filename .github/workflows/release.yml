@@ -59,9 +59,11 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
+      # npm install, not npm ci: the lock file drifts on platform-optional
+      # deps (same story as ci.yml — see "platform-optional lock drift").
       - name: Install node dependencies
         shell: pwsh
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Build Tauri app (signed, with updater artifacts)
         shell: pwsh
