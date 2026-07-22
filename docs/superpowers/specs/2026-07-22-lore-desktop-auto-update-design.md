@@ -1,10 +1,12 @@
 # Lore Desktop — Auto-update (updater Tauri 2 + releases GitHub)
 
-Validé par Jimmy le 2026-07-22. Contexte : app distribuée à l'équipe (Windows, setup NSIS), repo code **privé** (`KiraFR/lore-desktop`), aucune CI ni release à ce jour. Objectif : les mises à jour s'installent depuis l'app, publication par tag.
+Validé par Jimmy le 2026-07-22. Contexte : app distribuée à l'équipe (Windows, setup NSIS), aucune CI ni release à ce jour. Objectif : les mises à jour s'installent depuis l'app, publication par tag.
+
+> **RÉVISION 2026-07-23** : le repo `KiraFR/lore-desktop` est devenu **PUBLIC** (après audit + purge d'historique). Les releases se font donc directement dessus — le repo séparé `lore-desktop-releases` initialement prévu est abandonné (supprimé). Conséquences : endpoint updater = `https://github.com/KiraFR/lore-desktop/releases/latest/download/latest.json`, publication CI via le `GITHUB_TOKEN` du workflow (`permissions: contents: write`) — **plus de PAT `RELEASES_TOKEN`**, plus de publication croisée ; minutes Actions gratuites (repo public).
 
 ## Décisions (arbitrées avec Jimmy)
 
-1. **Hébergement** : repo GitHub **public dédié `KiraFR/lore-desktop-releases`** ne contenant QUE les releases (setup NSIS signé + `latest.json`). Le code reste privé ; l'app pointe sur `https://github.com/KiraFR/lore-desktop-releases/releases/latest/download/latest.json`.
+1. **Hébergement** : releases GitHub du repo `KiraFR/lore-desktop` lui-même (public) — setup NSIS signé + `latest.json` ; l'app pointe sur `https://github.com/KiraFR/lore-desktop/releases/latest/download/latest.json`.
 2. **UX** : check silencieux au démarrage + toutes les **4 h** ; si version dispo, bannière discrète « Update available — vX.Y.Z » avec bouton **Install & restart** (progression de téléchargement puis relance). Jamais d'installation sans clic. Preferences ▸ Support : version courante + bouton « Check for updates » (résultat visible : up to date / update / erreur ; en check auto les erreurs réseau restent silencieuses).
 3. **Publication** : **GitHub Actions** sur le repo privé, déclenché par tag `v*` — runner Windows, build + signature, publication croisée sur le repo public.
 
@@ -14,9 +16,9 @@ Validé par Jimmy le 2026-07-22. Contexte : app distribuée à l'équipe (Window
 - `tauri.conf.json` : `bundle.createUpdaterArtifacts: true` ; section `plugins.updater` avec `endpoints` (URL ci-dessus) et `pubkey` minisign. Windows `installMode: "passive"`.
 - **Clés (manipulées par Jimmy uniquement, JAMAIS committées ni transmises à Claude — seule la clé PUBLIQUE entre dans le repo)** : `npx tauri signer generate -w <fichier hors repo>` ; secrets GitHub `TAURI_SIGNING_PRIVATE_KEY` (+ `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` si passphrase) posés via `gh secret set` ; sauvegarde de la clé privée dans le gestionnaire de mots de passe de Jimmy. Tant que la vraie pubkey n'est pas fournie, un placeholder documenté `TAURI_UPDATER_PUBKEY_PLACEHOLDER` occupe le champ (l'updater est alors inopérant en local, c'est attendu).
 
-## CI (`.github/workflows/release.yml`, repo privé)
+## CI (`.github/workflows/release.yml`)
 
-Déclencheur `push` sur tags `v*`. Étapes : checkout ; setup Node 20 + Rust stable (cache cargo) ; `npm ci` ; `npx tauri build` avec `TAURI_SIGNING_PRIVATE_KEY`/`…_PASSWORD` en env ; script Node `scripts/make-latest-json.mjs` qui lit la version de `tauri.conf.json`, le `.sig` produit, et écrit `latest.json` (`version`, `notes` = corps du tag ou défaut, `pub_date`, `platforms."windows-x86_64"` = `{signature, url}` avec l'URL du setup dans la release du repo PUBLIC, nom d'asset stable encodé) ; publication via `gh release create <tag> -R KiraFR/lore-desktop-releases` (secret `RELEASES_TOKEN`, PAT portant `repo` sur le repo public) en uploadant le setup `.exe`, son `.sig` et `latest.json`. Garde-fou : le job échoue si la version du tag ≠ version de `tauri.conf.json` (et `Cargo.toml`/`package.json` si versionnés — vérifier la source de vérité au moment de l'implémentation ; le bump reste manuel en v1).
+Déclencheur `push` sur tags `v*`. Étapes : checkout ; setup Node 20 + Rust stable (cache cargo) ; `npm ci` ; `npx tauri build` avec `TAURI_SIGNING_PRIVATE_KEY`/`…_PASSWORD` en env ; script Node `scripts/make-latest-json.mjs` qui lit la version de `tauri.conf.json`, le `.sig` produit, et écrit `latest.json` (`version`, `notes` = corps du tag ou défaut, `pub_date`, `platforms."windows-x86_64"` = `{signature, url}` avec l'URL du setup dans la release de CE repo, nom d'asset stable encodé) ; publication via `gh release create <tag>` sur le repo courant avec le `GITHUB_TOKEN` du workflow (`permissions: contents: write`) en uploadant le setup `.exe`, son `.sig` et `latest.json`. Garde-fou : le job échoue si la version du tag ≠ version de `tauri.conf.json` (et `Cargo.toml`/`package.json` si versionnés — vérifier la source de vérité au moment de l'implémentation ; le bump reste manuel en v1).
 
 ## Dans l'app
 
