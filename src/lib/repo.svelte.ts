@@ -286,12 +286,23 @@ export async function discardFile(path: string) {
 }
 
 // Undo the last local commit: the tip moves back to `parentRevision` and the
-// commit's changes return to the pending set (Changes).
-export async function undoCommit(parentRevision: string) {
+// commit's changes return to the pending set (Changes). `overwritePaths` are
+// files of the commit that ALSO carry a pending change (the user confirmed the
+// overwrite in History): each one is reset FIRST — while the tip still IS the
+// commit, so the discard restores exactly the committed version — then the
+// standard undo runs. The resets aren't rollback-able: a failure after them
+// leaves the tree as it is and surfaces honestly.
+export async function undoCommit(parentRevision: string, overwritePaths: string[] = []) {
   const p = session.config.currentRepo
   if (!p) return
-  try { await api.undoCommit(p, parentRevision) }
-  catch (e) { toastError('Undo failed', e); return }
+  try {
+    for (const path of overwritePaths) await api.discardFile(p, path)
+    await api.undoCommit(p, parentRevision)
+  } catch (e) {
+    toastError('Undo failed', e)
+    await refreshStatus() // any reset already done is real — show the tree as it is
+    return
+  }
   await refreshStatus()
   await refreshHistory(true)
 }

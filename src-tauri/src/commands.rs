@@ -1098,7 +1098,13 @@ fn undo_backup_dir() -> std::path::PathBuf {
 /// (2) back up the added/modified files, (3) reset the branch to `parent`, then
 /// (4) re-apply — restore added/modified files, re-delete files the commit deleted.
 /// The result: the branch tip moves back and the changes reappear as pending.
-/// Caller must ensure the working tree is otherwise clean (== the tip).
+///
+/// A dirty tree is allowed: pending changes on files OUTSIDE the commit are part
+/// of the same `parent` → working-tree diff, so they're backed up and restored
+/// exactly like the commit's own files and survive the hard reset untouched.
+/// A file in BOTH sets must be reset by the caller BEFORE calling (the UI does,
+/// after its overwrite warning), so the working tree holds the committed content
+/// the undo re-applies.
 #[tauri::command]
 pub async fn lore_undo_commit(repo_path: String, parent_revision: String) -> Result<(), String> {
     blocking(move || undo_commit_blocking(&repo_path, &parent_revision)).await
@@ -1108,7 +1114,9 @@ fn undo_commit_blocking(repo_path: &str, parent_revision: &str) -> Result<(), St
     use std::fs;
     let repo = std::path::Path::new(repo_path);
 
-    // 1. The commit's files (working tree still == the tip here).
+    // 1. Everything that differs from the parent: the commit's files (the
+    //    working tree holds their committed content — overlaps were reset by
+    //    the caller) plus any pending change outside the commit.
     let diff_events = run_lore(&["diff", "--source", parent_revision, "--repository", repo_path])?;
     let files = commit_files_from(&diff_events);
 

@@ -58,6 +58,36 @@ describe('mock api', () => {
     expect(after.files.length).toBeGreaterThan(0)
   })
 
+  it('commitAll enters history and undoCommit removes exactly that commit', async () => {
+    const before = await mock.getHistory('C:/repos/hist', 1)
+    await mock.commitAll('C:/repos/hist', 'goes into history', [])
+    const during = await mock.getHistory('C:/repos/hist', 1)
+    expect(during.commits[0].message).toBe('goes into history')
+    expect(during.commits[0].parents).toEqual([before.commits[0].id])
+    await mock.undoCommit('C:/repos/hist', during.commits[0].parents[0])
+    const after = await mock.getHistory('C:/repos/hist', 1)
+    expect(after.commits[0].id).toBe(before.commits[0].id)
+  })
+
+  it('undo with an overlap: reset + undo returns the file as pending, outside changes survive', async () => {
+    const repo = 'C:/repos/undodirty'
+    const outside = (await mock.getStatus(repo)).files[0].path
+    // Commit everything except `outside`, then re-create a pending change on a
+    // committed file (restoreFile) — the overlap scenario of the design spec.
+    await mock.commitAll(repo, 'overlap seed', [outside])
+    const tip = (await mock.getHistory(repo, 1)).commits[0]
+    const overlapPath = tip.files[0].path
+    expect(overlapPath).not.toBe(outside)
+    await mock.restoreFile(repo, overlapPath, 'somerev')
+    // The confirmed UI flow: reset the overlapping file, then the standard undo.
+    await mock.discardFile(repo, overlapPath)
+    await mock.undoCommit(repo, tip.parents[0])
+    const after = await mock.getStatus(repo)
+    const paths = after.files.map((f) => f.path)
+    expect(paths).toContain(overlapPath) // back as pending, committed content
+    expect(paths).toContain(outside)     // the out-of-commit change survived
+  })
+
   it('selective commit keeps excluded files pending', async () => {
     const before = await mock.getStatus('C:/repos/x')
     const keep = before.files[0].path

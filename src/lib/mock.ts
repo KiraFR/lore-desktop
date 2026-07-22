@@ -101,6 +101,18 @@ function buildBigHistory(n: number): Commit[] {
 
 const BIG_HISTORY: Commit[] = buildBigHistory(5000)
 
+// The tip is a LOCAL, unpushed commit by you (seed `localAhead: 1` below) whose
+// files OVERLAP the seeded pending changes (PlayerCharacter.cpp +
+// DefaultInput.ini are in both sets): the undo-with-dirty-tree overwrite
+// warning is exercisable in the browser preview out of the box.
+BIG_HISTORY[0].author = 'you'
+BIG_HISTORY[0].message = 'Tune player movement and input defaults'
+BIG_HISTORY[0].files = [
+  { path: 'Source/Player/PlayerCharacter.cpp', action: 'modify' },
+  { path: 'Config/DefaultInput.ini', action: 'modify' },
+  { path: 'Source/Items/LootTable.cpp', action: 'add' },
+]
+
 // Per-repo mutable change set, keyed by working-dir path. Defaults for any path.
 function seedFiles(): ChangedFile[] {
   return [
@@ -176,12 +188,17 @@ let lockList: LockEntry[] = [
 // once; after that the app is "up to date" until a reload resets the module.
 let mockUpdateInstalled = false
 
+// Unique ids for commits created by the mock commitAll (they enter BIG_HISTORY).
+let localCommitSeq = 0
+
 interface RepoState { branch: string; localAhead: number; remoteAhead: number; revisionNumber: number; localRevisionNumber: number; files: ChangedFile[] }
 const repoStates = new Map<string, RepoState>()
 
 function stateFor(repoPath: string): RepoState {
   if (!repoStates.has(repoPath)) {
-    repoStates.set(repoPath, { branch: 'main', localAhead: 0, remoteAhead: 1, revisionNumber: 5, localRevisionNumber: 5, files: seedFiles() })
+    // localAhead: 1 = the seeded BIG_HISTORY tip is an unpushed local commit
+    // (see its override above) — History offers "Undo commit" right away.
+    repoStates.set(repoPath, { branch: 'main', localAhead: 1, remoteAhead: 1, revisionNumber: 5, localRevisionNumber: 5, files: seedFiles() })
   }
   return repoStates.get(repoPath)!
 }
@@ -349,8 +366,19 @@ export const mock: LoreApi = {
     await delay(500)
     const s = stateFor(repoPath)
     // Unchecked (excluded) files stay pending; the rest are committed away.
+    const committed = s.files.filter((f) => !exclude.includes(f.path))
     s.files = s.files.filter((f) => exclude.includes(f.path))
     s.localAhead += 1
+    // The new tip enters the mock history (with the head label moved onto it)
+    // so an undo right after a commit is coherent: undoCommit shifts it back.
+    const prev = BIG_HISTORY[0]
+    const head = prev?.head
+    if (prev) delete prev.head
+    BIG_HISTORY.unshift({
+      id: `local${++localCommitSeq}`, rev: (prev?.rev ?? 0) + 1, message, author: 'you',
+      when: 'just now', whenMs: Date.now(), lane: 0, parents: prev ? [prev.id] : [], head,
+      files: committed.map((f) => ({ path: f.path, action: f.action })),
+    })
   },
   async push(repoPath: string, onProgress?: (p: OpProgress) => void) {
     if (localStorage.getItem(PUSH_NONFF_KEY) === '1') {
@@ -420,10 +448,17 @@ export const mock: LoreApi = {
   async undoCommit(repoPath: string, _parentRevision: string) {
     await delay(400)
     const s = stateFor(repoPath)
-    if (s.localAhead > 0) s.localAhead -= 1
-    // The undone commit's change reappears as pending.
-    if (!s.files.some((f) => f.path === 'Source/Player/Undone.cpp'))
-      s.files = [{ path: 'Source/Player/Undone.cpp', action: 'modify', isBinary: false, size: 1024 }, ...s.files]
+    if (s.localAhead <= 0) return
+    s.localAhead -= 1
+    // The undone tip leaves the history (head label moves back) and its files
+    // reappear as pending — including a file the overlap flow just reset: it
+    // returns as a pending change at the committed content, like the real app.
+    const undone = BIG_HISTORY.shift()
+    if (BIG_HISTORY[0] && undone?.head) BIG_HISTORY[0].head = undone.head
+    for (const f of undone?.files ?? []) {
+      if (!s.files.some((x) => x.path === f.path))
+        s.files = [{ path: f.path, action: f.action, isBinary: /\.(umap|uasset|png|wav|obj|fbx)$/i.test(f.path), size: 1_024_000 }, ...s.files]
+    }
   },
   async amendCommit(_repoPath: string, message: string) {
     await delay(300)

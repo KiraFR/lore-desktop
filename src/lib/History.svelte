@@ -11,6 +11,7 @@
   import HistoryFilePreview from './HistoryFilePreview.svelte'
   import { toggleFilePath, selectionAfterCommitChange, selectionAfterFilter, isLocalTip } from './historySelection'
   import { filterCommits } from './historyFilter'
+  import { overlappingPaths, undoConfirmMessage } from './undoOverlap'
   import type { CommitFile } from './types'
 
   // Commits + selection live in the shared `history` store so leaving and
@@ -97,21 +98,30 @@
     dels: detailFiles.filter((f) => f.action === 'delete').length,
   })
 
-  // The last local (unpushed) commit can be undone — but only with a clean working
-  // tree (no other pending changes), so the undo captures exactly the commit.
+  // The last local (unpushed) commit can be undone even with a dirty working
+  // tree: pending changes on files OUTSIDE the commit survive as-is, and a file
+  // in BOTH sets is reset to the committed version after an explicit warning
+  // (doUndo lists the overlaps in the confirmation before anything runs).
   const canUndo = $derived(
     !!selected && selected.id === history.commits[0]?.id &&
-    (repo.status?.localAhead ?? 0) > 0 && selected.parents.length > 0 &&
-    (repo.status?.files.length ?? 0) === 0,
+    (repo.status?.localAhead ?? 0) > 0 && selected.parents.length > 0,
   )
 
   async function doUndo() {
     if (!selected || !canUndo) return
-    const ok = await confirmAction(
-      `Undo the commit "${selected.message}"? Its changes go back to Changes (nothing is lost).`,
-      'Undo commit',
-    )
-    if (ok) undoCommit(selected.parents[0])
+    // The commit's files normally sit in the lazily-fetched detail; fetch them
+    // directly if that's still in flight or failed — the overlap check must
+    // never run against an empty list and silently overwrite pending work.
+    let files = detailFiles
+    if (detailLoading || detailError) {
+      const repoPath = session.config.currentRepo
+      if (!repoPath) return
+      try { files = await api.getCommitFiles(repoPath, selected.id, selected.parents[0] ?? '') }
+      catch (e) { toastError("Couldn't load the commit's files", e); return }
+    }
+    const overlap = overlappingPaths(files, (repo.status?.files ?? []).map((f) => f.path))
+    const ok = await confirmAction(undoConfirmMessage(selected.message, overlap), 'Undo commit')
+    if (ok) undoCommit(selected.parents[0], overlap)
   }
 
   // The last local (unpushed) commit's message can be amended. Unlike undo, this
