@@ -13,7 +13,8 @@
 // <tag>            the git tag being released, e.g. v0.1.1
 //
 // Pure Node, no dependencies. Exported functions are unit-tested by
-// scripts/make-latest-json.test.mjs (run with: node --test scripts/).
+// scripts/make-latest-json.test.mjs (run with:
+// node --test scripts/make-latest-json.test.mjs).
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -53,13 +54,19 @@ export function assertTagMatchesVersion(tag, configVersion) {
 }
 
 /**
- * Download URL of a release asset on this repo. Each path segment is
- * URL-encoded (the NSIS setup name contains spaces: "Lore Desktop_X.Y.Z_x64-setup.exe").
+ * Name GitHub gives an uploaded release asset: spaces become dots (verified
+ * on the real v0.1.1 release — "Lore Desktop_…" was stored as "Lore.Desktop_…",
+ * and the %20 URL 404'd).
  */
+export function githubAssetName(assetName) {
+  return assetName.replace(/ /g, ".");
+}
+
+/** Download URL of a release asset on this repo, GitHub-normalized. */
 export function assetUrl(tag, assetName, repoSlug = REPO_SLUG) {
   return (
     `https://github.com/${repoSlug}/releases/download/` +
-    `${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`
+    `${encodeURIComponent(tag)}/${encodeURIComponent(githubAssetName(assetName))}`
   );
 }
 

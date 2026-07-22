@@ -32,10 +32,10 @@ test("assertTagMatchesVersion accepts a match, rejects a mismatch", () => {
   );
 });
 
-test("assetUrl encodes spaces in the asset name", () => {
+test("assetUrl uses the GitHub-normalized asset name (spaces -> dots)", () => {
   assert.equal(
     assetUrl("v0.1.1", "Lore Desktop_0.1.1_x64-setup.exe"),
-    "https://github.com/KiraFR/lore-desktop/releases/download/v0.1.1/Lore%20Desktop_0.1.1_x64-setup.exe",
+    "https://github.com/KiraFR/lore-desktop/releases/download/v0.1.1/Lore.Desktop_0.1.1_x64-setup.exe",
   );
 });
 
@@ -92,7 +92,7 @@ test("main end-to-end with fake artifacts", () => {
       platforms: {
         "windows-x86_64": {
           signature: "dGVzdC1zaWduYXR1cmU=",
-          url: "https://github.com/KiraFR/lore-desktop/releases/download/v0.1.1/Lore%20Desktop_0.1.1_x64-setup.exe",
+          url: "https://github.com/KiraFR/lore-desktop/releases/download/v0.1.1/Lore.Desktop_0.1.1_x64-setup.exe",
         },
       },
     });
