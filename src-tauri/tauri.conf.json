@@ -29,7 +29,7 @@
       "endpoints": [
         "https://github.com/KiraFR/lore-desktop/releases/latest/download/latest.json"
       ],
-      "pubkey": "TAURI_UPDATER_PUBKEY_PLACEHOLDER",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwOTQxMDg5M0JDQjM2QkMKUldTOE5zczdpUkNVOEl3cWhRMHN1REdqWlpydnNZbmxKcytLQ3o0Z2pESUhGUU9TbFNyN3RsbmsK",
       "windows": {
         "installMode": "passive"
       }
