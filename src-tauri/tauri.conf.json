@@ -13,8 +13,11 @@
     "windows": [
       {
         "title": "Lore Desktop",
-        "width": 800,
-        "height": 600,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 940,
+        "minHeight": 620,
+        "center": true,
         "resizable": true,
         "fullscreen": false
       }

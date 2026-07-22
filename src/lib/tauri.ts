@@ -129,6 +129,22 @@ export const tauriApi: LoreApi = {
   installUpdate: async (onProgress) => {
     const update = pendingUpdate ?? (await check())
     if (!update) throw new Error('No update is available')
+    // Windows: the app puts itself in a kill-on-close Job object at startup
+    // (src-tauri/src/job.rs) so the lore sidecars die with it. The NSIS
+    // installer spawned by downloadAndInstall would be a member of that job
+    // too, and the exit(0) inside install() closes the job's last handle —
+    // TERMINATING the installer before it does anything. That is why every
+    // in-app update failed silently while the same installer worked launched
+    // by hand. prepare_update_breakaway flips
+    // JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK on the job so processes spawned
+    // from this point on are born outside it. Accepted side effect: lore
+    // commands spawned during the short download+install window also escape
+    // the job (they'd only be orphaned by a hard kill inside that window).
+    // No-op on macOS/Linux. The command logs to the app file logs; the
+    // console lines below cover the webview side.
+    console.info('[update] preparing job breakaway before download+install')
+    await invoke('prepare_update_breakaway')
+    console.info('[update] job breakaway enabled, starting download+install')
     let total = 0
     let got = 0
     await update.downloadAndInstall((e) => {

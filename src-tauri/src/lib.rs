@@ -101,6 +101,7 @@ pub fn run() {
         commands::lore_update_path,
         commands::lore_logfile_location,
         commands::app_log_dir,
+        commands::prepare_update_breakaway,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

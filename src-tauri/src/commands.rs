@@ -2899,6 +2899,28 @@ mod repo_health_tests {
     }
 }
 
+/// Called by the frontend right before `update.downloadAndInstall()`. On
+/// Windows it adds JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK to the kill-on-close
+/// job installed at startup (job.rs), so the NSIS installer the updater
+/// plugin spawns is born OUTSIDE the job and survives the app's exit(0) —
+/// without this every in-app update died silently, killed with the job.
+/// Elsewhere it is a no-op kept for API uniformity. Logged at info level so
+/// the sequence shows up in the app file logs next to the updater's traces.
+#[tauri::command]
+pub fn prepare_update_breakaway() -> Result<(), String> {
+    log::info!("update: enabling silent breakaway on the sidecar job (installer must outlive the app)");
+    match crate::job::enable_silent_breakaway() {
+        Ok(()) => {
+            log::info!("update: silent breakaway enabled");
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!("update: silent breakaway failed — the installer may be killed with the app: {e}");
+            Err(e)
+        }
+    }
+}
+
 #[cfg(test)]
 mod reveal_arg_tests {
     use super::reveal_arg_windows;
