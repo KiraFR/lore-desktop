@@ -24,9 +24,21 @@
       "assetProtocol": { "enable": true, "scope": [] }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/KiraFR/lore-desktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "TAURI_UPDATER_PUBKEY_PLACEHOLDER",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1,10 +1,18 @@
+import { getVersion } from '@tauri-apps/api/app'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
+import { relaunch } from '@tauri-apps/plugin-process'
+import { check, type Update } from '@tauri-apps/plugin-updater'
 import { mock } from './mock'
+import { progressPct } from './updater'
 import type { AppConfig, Branch, CommitFile, DiffLine, FileRevision, HistoryPage, Identity, LockEntry, LoreApi, LoreNotification, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, SharedStoreStatus, StatusResult } from './types'
 
 type WireProgress = { opId: string; kind: string; done: number; total?: number; unit?: 'bytes' | 'files' }
+
+// The Update handle from the last successful check — downloadAndInstall must be
+// called on that same object, so it is kept between the two API calls.
+let pendingUpdate: Update | null = null
 
 /**
  * Invoke a long command with a frontend-generated opId, listening to
@@ -112,4 +120,31 @@ export const tauriApi: LoreApi = {
   // The base is always the current HEAD in Lore, so `basedOn` is not forwarded.
   createBranch: (repoPath, name) => invoke<void>('lore_create_branch', { repoPath, name }),
   archiveBranch: (repoPath, name) => invoke<void>('lore_archive_branch', { repoPath, name }),
+  checkForUpdate: async () => {
+    const update = await check()
+    pendingUpdate = update
+    return update ? { version: update.version, notes: update.body ?? '' } : null
+  },
+  installUpdate: async (onProgress) => {
+    const update = pendingUpdate ?? (await check())
+    if (!update) throw new Error('No update is available')
+    let total = 0
+    let got = 0
+    await update.downloadAndInstall((e) => {
+      if (e.event === 'Started') {
+        total = e.data.contentLength ?? 0
+      } else if (e.event === 'Progress') {
+        got += e.data.chunkLength
+        const pct = progressPct(got, total)
+        if (pct !== null) onProgress(pct)
+      } else if (e.event === 'Finished') {
+        onProgress(100)
+      }
+    })
+    // On Windows the installer exits the app itself; relaunch() is the
+    // documented follow-up for the other cases. Either way the process dies
+    // here — the caller never sees this promise resolve.
+    await relaunch()
+  },
+  getAppVersion: () => getVersion(),
 }

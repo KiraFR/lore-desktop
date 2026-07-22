@@ -172,6 +172,10 @@ let lockList: LockEntry[] = [
   { path: 'Content/Characters/Hero/SK_Hero.uasset', holder: 'Alex L', when: 'yesterday' },
 ]
 
+// In-app updater (mock): checkForUpdate offers v9.9.9 until installUpdate ran
+// once; after that the app is "up to date" until a reload resets the module.
+let mockUpdateInstalled = false
+
 interface RepoState { branch: string; localAhead: number; remoteAhead: number; revisionNumber: number; localRevisionNumber: number; files: ChangedFile[] }
 const repoStates = new Map<string, RepoState>()
 
@@ -511,6 +515,28 @@ export const mock: LoreApi = {
   },
   async updateRepoPath(_newPath: string) {
     await delay(300)
+  },
+  async checkForUpdate() {
+    // ~2 s round-trip so the banner appears shortly after the boot check —
+    // the whole cycle is developable in the browser. Once "installed", further
+    // checks report up to date (Preferences shows the up-to-date path).
+    await delay(2000)
+    if (mockUpdateInstalled) return null
+    return { version: '9.9.9', notes: 'Mock release notes — the real notes live on the GitHub release page.' }
+  },
+  async installUpdate(onProgress: (pct: number) => void) {
+    // Simulated 0→100 download (~2 s), then a logged no-op instead of the
+    // real download + NSIS install + relaunch.
+    for (let i = 1; i <= 10; i++) {
+      await delay(200)
+      onProgress(i * 10)
+    }
+    mockUpdateInstalled = true
+    console.log('[mock] update v9.9.9 installed — a real build would relaunch here')
+  },
+  async getAppVersion() {
+    await delay(80)
+    return '0.1.0-mock'
   },
   async loadConfig() {
     await delay(60)

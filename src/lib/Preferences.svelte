@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from './api'
   import { session, setDisplayName, setTheme } from './session.svelte'
+  import { updates, checkNow } from './updates.svelte'
   import { resolveTheme } from './theme'
   import { toastError } from './toast'
   import Icon from './Icon.svelte'
@@ -40,6 +41,17 @@
       toastError(target ? "Couldn't enable the shared store" : "Couldn't disable the shared store", e)
     }
   }
+
+  // --- Support: updates ---
+  const upd = $derived(updates.state)
+  const updateHint = $derived(
+    upd.kind === 'checking' ? 'Checking…'
+      : upd.kind === 'upToDate' ? "You're up to date"
+        : upd.kind === 'available' ? `v${upd.version} available — install from the status bar`
+          : upd.kind === 'downloading' ? `Downloading… ${upd.pct}%`
+            : upd.kind === 'ready' ? 'Restarting…'
+              : upd.kind === 'error' ? `Check failed — ${upd.message}`
+                : 'In-app updates')
 
   // --- Support: logs ---
   let logsPath = $state<string | null>(null)
@@ -94,6 +106,12 @@
 
     <div class="sec">Support</div>
     <div class="row">
+      <span class="lbl">Version {updates.appVersion ?? '…'}<span class="hint" class:err={upd.kind === 'error'}>{updateHint}</span></span>
+      <button class="ghostbtn" onclick={checkNow} disabled={upd.kind === 'checking' || upd.kind === 'downloading' || upd.kind === 'ready'}>
+        {upd.kind === 'checking' ? 'Checking…' : 'Check for updates'}
+      </button>
+    </div>
+    <div class="row">
       <span class="lbl">Logs<span class="hint">{logsPath ?? 'CLI log directory'}</span></span>
       <button class="ghostbtn" onclick={openLogs}>Open logs</button>
     </div>
@@ -111,6 +129,7 @@
   .field input { width: 100%; padding: 7px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
   .lbl { display: flex; flex-direction: column; min-width: 0; color: var(--text); }
   .hint { font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hint.err { color: var(--deleted); }
   .val { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex: none; }
   .seg button { padding: 3px 12px; font-size: 11.5px; border: none; border-radius: 0; background: transparent; color: var(--text-muted); }

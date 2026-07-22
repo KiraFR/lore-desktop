@@ -11,6 +11,13 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(notifications::NotifState::default())
     .setup(|app| {
+      // In-app auto-update (spec 2026-07-22): updater (check/download/install)
+      // + process (relaunch after install). Both are desktop-only plugins.
+      #[cfg(desktop)]
+      {
+        app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+        app.handle().plugin(tauri_plugin_process::init())?;
+      }
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

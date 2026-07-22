@@ -156,6 +156,14 @@ export interface AppConfig {
   theme?: 'light' | 'dark'
 }
 
+/** A newer version the update endpoint offers. */
+export interface UpdateInfo {
+  /** Version of the available update (no leading 'v'). */
+  version: string
+  /** Release notes (may be empty; the full notes live on the release page). */
+  notes: string
+}
+
 export interface HistoryPage {
   commits: Commit[]
   nextCursor: string | null
@@ -253,4 +261,12 @@ export interface LoreApi {
   updateRepoPath(newPath: string): Promise<void>
   loadConfig(): Promise<AppConfig>
   saveConfig(config: AppConfig): Promise<void>
+  /** Ask the update endpoint whether a newer version exists; null = up to date. */
+  checkForUpdate(): Promise<UpdateInfo | null>
+  /** Download and install the pending update, then RELAUNCH the app — the real
+   *  implementation never resolves for the caller (the process restarts).
+   *  `onProgress` receives a 0..100 percentage. */
+  installUpdate(onProgress: (pct: number) => void): Promise<void>
+  /** The running app's version (tauri.conf.json `version`). */
+  getAppVersion(): Promise<string>
 }

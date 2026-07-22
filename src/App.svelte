@@ -7,6 +7,7 @@
   import { repoName } from './lib/repoList'
   import { toastInfo } from './lib/toast'
   import { ui, setView } from './lib/ui.svelte'
+  import { startUpdateCycle } from './lib/updates.svelte'
   import SignIn from './lib/SignIn.svelte'
   import TitleBar from './lib/TitleBar.svelte'
   import RepoPicker from './lib/RepoPicker.svelte'
@@ -22,6 +23,10 @@
   let selectedPath = $state<string | null>(null)
 
   onMount(bootstrap)
+
+  // In-app update cycle: silent check shortly after boot, then every 4 h and
+  // on focus once the interval has elapsed (updates.svelte.ts).
+  onMount(startUpdateCycle)
 
   // Re-check the working tree when the window regains focus, so external edits
   // (made in an editor while the app was in the background) appear without a

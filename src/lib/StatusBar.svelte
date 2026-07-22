@@ -3,6 +3,7 @@
   import { repo, locks, sync } from './repo.svelte'
   import { setView } from './ui.svelte'
   import { chipFor } from './statusChip'
+  import { updates, install } from './updates.svelte'
   import Icon from './Icon.svelte'
 
   const mine = $derived(locks.list.filter((l) => l.holder === 'you').length)
@@ -40,6 +41,18 @@
       <Icon name="sync" size={12} /> At rev {chip.revision} — back to latest
     </button>
   {/if}
+  {#if updates.state.kind === 'available'}
+    <span class="chip update" title={updates.state.notes || undefined}>
+      <Icon name="download" size={12} /> Update available — v{updates.state.version}
+      <button class="mini install" onclick={install}>Install &amp; restart</button>
+    </span>
+  {:else if updates.state.kind === 'downloading'}
+    <span class="chip update">
+      <Icon name="download" size={12} /> Downloading update… {updates.state.pct}%
+    </span>
+  {:else if updates.state.kind === 'ready'}
+    <span class="chip update"><Icon name="sync" size={12} /> Restarting…</span>
+  {/if}
   <span class="spacer"></span>
   {#if session.config.currentRepo}
     <span class="item">
@@ -65,4 +78,7 @@
   .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--panel); color: var(--text-muted); border: 1px solid var(--border); }
   button.chip { cursor: pointer; }
   .chip.merge { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+  .chip.update { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+  .mini.install { margin-left: 2px; background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  .mini.install:hover { background: var(--accent-hover); }
 </style>
