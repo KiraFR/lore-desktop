@@ -60,6 +60,17 @@ pub async fn lore_logfile_location() -> Result<String, String> {
     .await
 }
 
+/// The APP's own log directory (where tauri-plugin-log writes lore-desktop.log)
+/// — distinct from `lore_logfile_location`, which is the lore CLI's log dir.
+#[tauri::command]
+pub fn app_log_dir(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    app.path()
+        .app_log_dir()
+        .map(|d| d.to_string_lossy().into_owned())
+        .map_err(|e| format!("resolving the app log dir: {e}"))
+}
+
 /// True iff any stored identity has an `expires` in the future.
 fn is_authenticated_from(events: &[crate::lore::LoreEvent], now_ms: i64) -> bool {
     events_with_tag(events, "authIdentity").iter().any(|d| {

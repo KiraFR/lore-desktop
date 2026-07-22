@@ -535,12 +535,17 @@ export const mock: LoreApi = {
   async revealPath(_absPath: string) {
     // No OS shell in the browser — parity no-op.
   },
-  async openPath(_absPath: string) {
-    // No OS shell in the browser — parity no-op.
+  async openPath(absPath: string) {
+    // No OS shell in the browser — parity no-op, logged so previews show the call.
+    console.log('[mock] openPath', absPath)
   },
   async logfileLocation() {
     await delay(80)
     return 'C:/Users/jimmy/AppData/Local/Epic Games/lore/data/logs'
+  },
+  async getAppLogDir() {
+    await delay(80)
+    return 'C:/Users/jimmy/AppData/Local/studio.soonerorlater.lore-desktop/logs'
   },
   async pathExists(path: string) {
     // Dev lever: localStorage.setItem('loredesktop.mock.missing', JSON.stringify(['C:/repos/x']))

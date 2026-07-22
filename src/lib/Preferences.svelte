@@ -53,7 +53,7 @@
               : upd.kind === 'error' ? `Check failed — ${upd.message}`
                 : 'In-app updates')
 
-  // --- Support: logs ---
+  // --- Support: logs (two distinct folders: the lore CLI's and the app's own) ---
   let logsPath = $state<string | null>(null)
   $effect(() => { api.logfileLocation().then((p) => { logsPath = p }).catch(() => { logsPath = null }) })
   async function openLogs() {
@@ -63,6 +63,17 @@
       await api.openPath(p)
     } catch (e) {
       toastError("Couldn't open the logs folder", e)
+    }
+  }
+  let appLogsPath = $state<string | null>(null)
+  $effect(() => { api.getAppLogDir().then((p) => { appLogsPath = p }).catch(() => { appLogsPath = null }) })
+  async function openAppLogs() {
+    try {
+      const p = appLogsPath ?? (await api.getAppLogDir())
+      appLogsPath = p
+      await api.openPath(p)
+    } catch (e) {
+      toastError("Couldn't open the app logs folder", e)
     }
   }
 
@@ -112,8 +123,12 @@
       </button>
     </div>
     <div class="row">
-      <span class="lbl">Logs<span class="hint">{logsPath ?? 'CLI log directory'}</span></span>
-      <button class="ghostbtn" onclick={openLogs}>Open logs</button>
+      <span class="lbl">Lore CLI logs<span class="hint">{logsPath ?? 'CLI log directory'}</span></span>
+      <button class="ghostbtn" onclick={openLogs}>Open CLI logs</button>
+    </div>
+    <div class="row">
+      <span class="lbl">App logs<span class="hint">{appLogsPath ?? 'Lore Desktop log directory'}</span></span>
+      <button class="ghostbtn" onclick={openAppLogs}>Open app logs</button>
     </div>
   </div>
 </div>

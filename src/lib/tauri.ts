@@ -106,6 +106,7 @@ export const tauriApi: LoreApi = {
   revealPath: (absPath) => invoke<void>('os_reveal_path', { path: absPath }),
   openPath: (absPath) => invoke<void>('os_open_path', { path: absPath }),
   logfileLocation: () => invoke<string>('lore_logfile_location'),
+  getAppLogDir: () => invoke<string>('app_log_dir'),
   pathExists: (path) => invoke<boolean>('os_path_exists', { path }),
   updateRepoPath: (newPath) => invoke<void>('lore_update_path', { newPath }),
   getBranches: (repoPath) => invoke<Branch[]>('lore_branches', { repoPath }),
@@ -141,9 +142,19 @@ export const tauriApi: LoreApi = {
         onProgress(100)
       }
     })
-    // On Windows the installer exits the app itself; relaunch() is the
-    // documented follow-up for the other cases. Either way the process dies
-    // here — the caller never sees this promise resolve.
+    // What happens next is platform-specific (verified against the sources of
+    // tauri-plugin-updater 2.10.1 and the NSIS template of @tauri-apps/cli
+    // 2.11.4, nsis_tauri_utils 0.5.3):
+    // - Windows (NSIS): install() spawns the new setup.exe with
+    //   `/P /R /UPDATE /ARGS <argv>` (installMode "passive" implies /R) and
+    //   immediately kills this process via std::process::exit(0) — the line
+    //   below is never reached. The INSTALLER relaunches the app: its
+    //   .onInstSuccess handler sees /R and starts the installed exe through
+    //   nsis_tauri_utils::RunAsUser. A relaunch failure there is silent (the
+    //   template ignores RunAsUser's return code) — check the app file logs
+    //   (Preferences > Support > Open app logs) when chasing one.
+    // - macOS/Linux: install() returns after swapping the bundle/AppImage and
+    //   relaunch() below is the documented follow-up.
     await relaunch()
   },
   getAppVersion: () => getVersion(),
