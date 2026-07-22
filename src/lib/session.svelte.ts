@@ -5,7 +5,9 @@ import { applyTheme, resolveTheme, type Theme } from './theme'
 import type { AppConfig, Identity } from './types'
 
 /** The studio's Lore server; used as the default when no server is stored yet. */
-export const DEFAULT_SERVER_URL = 'lore://lore.example.com:41337'
+// Deliberately empty: the app ships with no default server — each team enters
+// its own URL (the sign-in input shows the expected shape as a placeholder).
+export const DEFAULT_SERVER_URL = ''
 
 // Shared reactive app state. `.svelte.ts` lets us use runes in a module.
 export const session = $state({
