@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseIgnore, isIgnored, filterIgnored, adjustSummary } from './loreIgnore'
+import { parseIgnore, isIgnored, filterIgnored } from './loreIgnore'
 
 const ignored = (path: string, text: string) => isIgnored(path, parseIgnore(text))
 
@@ -103,23 +103,5 @@ describe('filterIgnored', () => {
     const { kept, ignored: out } = filterIgnored(files, [])
     expect(kept).toBe(files)
     expect(out).toEqual([])
-  })
-})
-
-describe('adjustSummary', () => {
-  it('subtracts the ignored files per action (modify/move/copy → mods)', () => {
-    const out = adjustSummary({ adds: 2, mods: 3, dels: 1 }, [
-      { action: 'add' }, { action: 'modify' }, { action: 'move' }, { action: 'delete' },
-    ])
-    expect(out).toEqual({ adds: 1, mods: 1, dels: 0 })
-  })
-  it('keeps an absent summary absent and clamps at zero', () => {
-    expect(adjustSummary(undefined, [{ action: 'add' }])).toBeUndefined()
-    expect(adjustSummary({ adds: 0, mods: 0, dels: 0 }, [{ action: 'add' }, { action: 'delete' }]))
-      .toEqual({ adds: 0, mods: 0, dels: 0 })
-  })
-  it('returns the summary untouched when nothing was ignored', () => {
-    const s = { adds: 1, mods: 2, dels: 3 }
-    expect(adjustSummary(s, [])).toBe(s)
   })
 })

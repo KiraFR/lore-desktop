@@ -3,7 +3,6 @@ import { session } from './session.svelte'
 import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction, toastInfo } from './toast'
 import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
-import { parseIgnore, filterIgnored, adjustSummary, type IgnoreRule } from './loreIgnore'
 import { opProgress } from './opProgress.svelte'
 import { isNonFastForwardPush, errorMessage } from './pushErrors'
 import { setView } from './ui.svelte'
@@ -16,8 +15,6 @@ const HISTORY_PAGE = 200
 export const repo = $state({
   status: null as StatusResult | null,
   busy: '' as '' | 'status' | 'commit' | 'push' | 'sync',
-  /** Files hidden from `status.files` by .loreignore — drives the "N ignored" summary segment. */
-  ignoredCount: 0,
 })
 
 export const locks = $state({ list: [] as LockEntry[] })
@@ -121,30 +118,13 @@ async function refreshFileSizes() {
 // don't disable the action buttons or flash a loading state.
 export async function refreshStatus(silent = false) {
   const path = session.config.currentRepo
-  if (!path) { repo.status = null; repo.ignoredCount = 0; return }
+  if (!path) { repo.status = null; return }
   if (!silent) repo.busy = 'status'
   try {
-    const status = await api.getStatus(path)
-    // .loreignore is re-read on EVERY refresh (tiny file, and an edit must take
-    // effect on the very next status — including when the edit is the pending
-    // change). A read failure toasts and falls back to zero rules: the ignore
-    // feature must never break the status itself.
-    let rules: IgnoreRule[] = []
-    try {
-      const text = await api.readIgnoreFile(path)
-      if (text !== null) rules = parseIgnore(text)
-    } catch (e) { toastError("Couldn't read .loreignore", e) }
-    // Guard (spec): merge conflicts are NEVER filtered — during a merge the
-    // whole list stays visible so every conflict remains resolvable.
-    if (rules.length > 0 && !status.mergeInProgress) {
-      const { kept, ignored } = filterIgnored(status.files, rules)
-      status.files = kept
-      status.summary = adjustSummary(status.summary, ignored)
-      repo.ignoredCount = ignored.length
-    } else {
-      repo.ignoredCount = 0
-    }
-    repo.status = status
+    // .loreignore filtering is NATIVE: `lore status --scan` reads the repo-root
+    // file itself, excludes the matched paths (negation `!pattern` included)
+    // and reports them — status.ignoredCount carries the deduplicated count.
+    repo.status = await api.getStatus(path)
     // Only wipe row thumbnails on an EXPLICIT refresh (repo switch, post-commit/
     // /sync). The silent window-focus refresh must NOT clear them, or every
     // refocus blanks and re-decodes the whole change list (visible flicker, and

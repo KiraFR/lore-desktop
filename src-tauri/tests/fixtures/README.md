@@ -21,6 +21,18 @@ Slice A plan, Task 2.
 / … (JSON booleans), `fromPath`. **No binary field** → infer `isBinary` from the
 extension. A clean repo emits zero file events (only the revision + `complete`).
 
+**`filterExclude`** (fixture status_ignore.ndjson, capturée le 2026-07-22 sur
+`lore-test-repo` avec un `.loreignore` racine `Saved/` + `*.tmp`) : support
+NATIF `.loreignore` de `status --scan` (absent de l'aide CLI — voir l'addendum
+de la spec loreignore 2026-07-21). Un événement `{"reason":0,"path":"…"}` par
+chemin exclu, émis **avec doublons** (`scratch.tmp` ×3, `Saved` ×3 dans la
+capture) ; un dossier exclu sort comme **une** entrée (pas ses fichiers), avant
+les `repositoryStatusFile`. Le `repositoryStatusSummary` est déjà ajusté (les
+exclus n'y comptent pas). La négation `!pattern` fonctionne nativement.
+`status_from` compte les chemins DÉDUPLIQUÉS → `ignoredCount`. Sémantique de
+`reason` non documentée (0 = observé pour l'ignore ET les sidecars `~base`/
+`~mine`/`~theirs` d'un merge, cf. section merge).
+
 **`revisionHistoryEntry`:** `revision` (hash string), `revisionNumber` (u64),
 `parent` = `[hash, hash]` (parent[0] = direct parent, parent[1] = merge parent or
 all-zeros). A zero hash is 64 `'0'` chars; filter those out.

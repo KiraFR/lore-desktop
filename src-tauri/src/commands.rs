@@ -121,6 +121,10 @@ pub struct StatusResultDto {
     /// Compteurs adds/mods/dels du wire ; absent quand le CLI ne les émet pas.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<StatusSummaryDto>,
+    /// Chemins exclus par le filtrage NATIF `.loreignore` du CLI (événements
+    /// `filterExclude`, dédupliqués — le CLI peut en émettre plusieurs par
+    /// chemin ; un dossier exclu compte pour UNE entrée). Segment « N ignored ».
+    pub ignored_count: usize,
     pub files: Vec<ChangedFileDto>,
 }
 
@@ -264,6 +268,17 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
             StatusSummaryDto { adds: n("adds"), mods: n("modifies") + n("moves") + n("copies"), dels: n("deletes") }
         });
 
+    // Support NATIF .loreignore : `status --scan` lit lui-même le fichier à la
+    // racine et rapporte chaque chemin exclu en `filterExclude` — avec des
+    // DOUBLONS possibles par chemin, et un dossier exclu sort comme une entrée
+    // unique (capture réelle : status_ignore.ndjson ; spec addendum 2026-07-21).
+    // Dédup par chemin pour un « N ignored » honnête.
+    let ignored_count = events_with_tag(events, "filterExclude")
+        .into_iter()
+        .filter_map(|d| d.get("path").and_then(|v| v.as_str()))
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
     let files = events_with_tag(events, "repositoryStatusFile")
         .into_iter()
         // Directory entries ("type": "directory") are containers, not changes
@@ -280,7 +295,7 @@ fn status_from(events: &[LoreEvent], repo_root: &std::path::Path) -> StatusResul
         })
         .collect();
 
-    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, local_revision_number: local_n, remote_available, remote_authorized, merge_in_progress, staged_pending, summary, files }
+    StatusResultDto { branch, local_ahead, remote_ahead, revision_number, local_revision_number: local_n, remote_available, remote_authorized, merge_in_progress, staged_pending, summary, ignored_count, files }
 }
 
 /// `flag*`/`is*` fields serialize as JSON booleans (via `u8_as_bool`); accept a
@@ -2385,6 +2400,47 @@ mod status_tests {
         let s = status_from(&parse_events(sample).unwrap(), std::path::Path::new(""));
         assert_eq!(s.summary, Some(StatusSummaryDto { adds: 2, mods: 5, dels: 1 }));
     }
+
+    #[test]
+    fn filter_exclude_paths_are_deduped() {
+        // The CLI can emit SEVERAL filterExclude events for the same path —
+        // the count must be over distinct paths, not raw events.
+        let sample = concat!(
+            r#"{"tagName":"repositoryStatusRevision","data":{"branchName":"main","revisionLocalNumber":1,"revisionRemoteNumber":1,"isLocalAhead":0,"isRemoteAhead":0}}"#, "\n",
+            r#"{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}"#, "\n",
+            r#"{"tagName":"filterExclude","data":{"reason":0,"path":"Saved"}}"#, "\n",
+            r#"{"tagName":"filterExclude","data":{"reason":0,"path":"Saved"}}"#, "\n",
+            r#"{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}"#, "\n",
+            r#"{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}"#, "\n",
+            r#"{"tagName":"repositoryStatusFile","data":{"path":".loreignore","size":27,"action":"add","type":"file","flagDirty":true}}"#, "\n",
+            r#"{"tagName":"complete","data":{"status":0}}"#, "\n",
+        );
+        let s = status_from(&parse_events(sample).unwrap(), std::path::Path::new(""));
+        assert_eq!(s.ignored_count, 2);
+        // The excluded paths never reach the file list; .loreignore itself stays.
+        let paths: Vec<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, [".loreignore"]);
+    }
+
+    #[test]
+    fn ignore_fixture_reports_native_exclusions() {
+        // Real capture (lore-test-repo, .loreignore = `Saved/` + `*.tmp`):
+        // 6 filterExclude events for 2 distinct paths (`scratch.tmp` ×3,
+        // `Saved` ×3 — the excluded DIRECTORY comes as one entry), and a wire
+        // summary already adjusted by the CLI (only .loreignore counted).
+        let events = parse_events(include_str!("../tests/fixtures/status_ignore.ndjson")).unwrap();
+        let s = status_from(&events, std::path::Path::new(""));
+        assert_eq!(s.ignored_count, 2);
+        let paths: Vec<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, [".loreignore"]);
+        assert_eq!(s.summary, Some(StatusSummaryDto { adds: 1, mods: 0, dels: 0 }));
+    }
+
+    #[test]
+    fn no_filter_exclude_events_mean_zero_ignored() {
+        let events = parse_events(include_str!("../tests/fixtures/status.ndjson")).unwrap();
+        assert_eq!(status_from(&events, std::path::Path::new("")).ignored_count, 0);
+    }
 }
 
 #[cfg(test)]
@@ -2776,46 +2832,6 @@ pub fn os_open_path(path: String) -> Result<(), String> {
         let mut cmd = std::process::Command::new("xdg-open");
         cmd.arg(&path);
         spawn_detached(cmd)
-    }
-}
-
-/// Pure read behind `lore_read_ignore` (testable without Tauri). `None` when
-/// the file is absent; the matching itself is front-side (src/lib/loreIgnore.ts).
-fn read_ignore_impl(repo_path: &str) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(std::path::Path::new(repo_path).join(".loreignore")) {
-        Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("couldn't read .loreignore: {e}")),
-    }
-}
-
-/// Raw contents of the repo-root `.loreignore`, or `None` when absent.
-#[tauri::command]
-pub async fn lore_read_ignore(repo_path: String) -> Result<Option<String>, String> {
-    blocking(move || read_ignore_impl(&repo_path)).await
-}
-
-#[cfg(test)]
-mod read_ignore_tests {
-    use super::read_ignore_impl;
-
-    #[test]
-    fn reads_the_file_when_present() {
-        let dir = std::env::temp_dir().join("lore-desktop-read-ignore-present");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".loreignore"), "Saved/\n*.tmp\n").unwrap();
-        let got = read_ignore_impl(dir.to_str().unwrap()).unwrap();
-        assert_eq!(got.as_deref(), Some("Saved/\n*.tmp\n"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn none_when_the_file_is_absent() {
-        let dir = std::env::temp_dir().join("lore-desktop-read-ignore-absent");
-        std::fs::create_dir_all(&dir).unwrap();
-        let _ = std::fs::remove_file(dir.join(".loreignore"));
-        assert_eq!(read_ignore_impl(dir.to_str().unwrap()).unwrap(), None);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

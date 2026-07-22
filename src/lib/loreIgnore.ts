@@ -1,11 +1,18 @@
-// .loreignore — app-side ignore filtering (the Lore CLI has none, see the
-// 2026-07-21 design spec). Common gitignore syntax WITHOUT negation:
-// `#` comments, blank lines, `*` / `?` / `**` globs, trailing `/` = whole
-// directory, a leading or interior `/` anchors the pattern to the repo root,
-// otherwise it matches at any depth.
+// .loreignore SIMULATION — used by the MOCK only. The real app relies on the
+// CLI's NATIVE filtering: `lore status --scan` reads the repo-root .loreignore
+// itself, excludes the matched paths and reports them as `filterExclude`
+// events, which the Rust side deduplicates into StatusResult.ignoredCount
+// (see the ADDENDUM of the 2026-07-21 loreignore design spec). This module
+// only lets mock.getStatus mimic that behaviour in the browser preview.
 //
-// Matching is CASE-SENSITIVE (deliberate v1 choice): paths come from the CLI
-// with their on-disk casing and rules are applied verbatim.
+// Simulated syntax: common gitignore subset WITHOUT negation — `#` comments,
+// blank lines, `*` / `?` / `**` globs, trailing `/` = whole directory, a
+// leading or interior `/` anchors the pattern to the repo root, otherwise it
+// matches at any depth. ⚠ The native `!pattern` negation (which DOES work in
+// the real CLI) is NOT simulated here.
+//
+// Matching is CASE-SENSITIVE: paths come with their on-disk casing and rules
+// are applied verbatim.
 
 export interface IgnoreRule {
   /** The original .loreignore line (trimmed) — kept for debugging/future UI. */
@@ -64,7 +71,7 @@ export function isIgnored(path: string, rules: IgnoreRule[]): boolean {
   return rules.some((r) => r.re.test(path))
 }
 
-/** Split a change list into kept / ignored (the store filters BEFORE storing). */
+/** Split a change list into kept / ignored (mock.getStatus filters its seed). */
 export function filterIgnored<T extends { path: string }>(
   files: T[],
   rules: IgnoreRule[],
@@ -74,23 +81,4 @@ export function filterIgnored<T extends { path: string }>(
   const ignored: T[] = []
   for (const f of files) (isIgnored(f.path, rules) ? ignored : kept).push(f)
   return { kept, ignored }
-}
-
-/**
- * Wire summary minus the ignored files' contribution, so the header counters
- * reflect the filtered list. Clamped at 0 in case the wire counters and the
- * file list ever disagree.
- */
-export function adjustSummary(
-  summary: { adds: number; mods: number; dels: number } | undefined,
-  ignored: { action: string }[],
-): { adds: number; mods: number; dels: number } | undefined {
-  if (!summary || ignored.length === 0) return summary
-  let { adds, mods, dels } = summary
-  for (const f of ignored) {
-    if (f.action === 'add') adds--
-    else if (f.action === 'delete') dels--
-    else mods-- // modify / move / copy all count as mods (same mapping as the mock)
-  }
-  return { adds: Math.max(adds, 0), mods: Math.max(mods, 0), dels: Math.max(dels, 0) }
 }

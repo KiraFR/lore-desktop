@@ -165,13 +165,13 @@ describe('mock api', () => {
     expect(a.kind).toBe('audio')
   })
 
-  it('readIgnoreFile serves rules that match seeded files (visible filter in preview)', async () => {
-    const text = await mock.readIgnoreFile('C:/repos/game')
-    expect(text).toContain('Saved/')
-    expect(text).toContain('*.tmp')
+  it('getStatus simulates the native .loreignore filter (files dropped, ignoredCount set)', async () => {
     const s = await mock.getStatus('C:/repos/ignoreseed')
-    expect(s.files.some((f) => f.path === 'Saved/autosave.tmp')).toBe(true)
-    expect(s.files.some((f) => f.path === 'Saved/Logs/game.log')).toBe(true)
+    // The two seeded Saved/ files are pre-filtered, like the real CLI does.
+    expect(s.files.some((f) => f.path.startsWith('Saved/'))).toBe(false)
+    expect(s.ignoredCount).toBe(2)
+    // The summary comes out already adjusted (the ignored add/modify don't count).
+    expect(s.summary).toEqual({ adds: 3, mods: 6, dels: 1 })
   })
 
   it('pathExists honours the missing-repos dev lever', async () => {

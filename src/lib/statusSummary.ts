@@ -13,8 +13,8 @@ export interface SummaryPart {
  * Parties colorées des compteurs de l'en-tête de Changes (« +3 ~2 −1 »).
  * Vide quand le summary est absent (CLI plus ancien) ou tout à zéro — la
  * feature disparaît, elle ne montre jamais de faux zéros. Le segment muted
- * « N ignored » (filtrage .loreignore, côté app) s'affiche dès que N > 0,
- * même sans summary wire.
+ * « N ignored » (filtrage natif .loreignore du CLI — status.ignoredCount)
+ * s'affiche dès que N > 0, même sans summary wire.
  */
 export function summaryParts(s?: StatusSummary | null, ignoredCount = 0): SummaryPart[] {
   const parts: SummaryPart[] = []

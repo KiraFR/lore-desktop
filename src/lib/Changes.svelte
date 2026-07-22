@@ -36,7 +36,7 @@
   const shownLocked = $derived(filterByQuery(parts.lockedByOthers, filter))
   const shownCount = $derived(shownCommittable.length + shownLocked.length)
   const branch = $derived(repo.status?.branch ?? 'main')
-  const summary = $derived(summaryParts(repo.status?.summary, repo.ignoredCount))
+  const summary = $derived(summaryParts(repo.status?.summary, repo.status?.ignoredCount ?? 0))
   const stagedCount = $derived(parts.committable.filter((f) => staged.has(f.path)).length)
   const behind = $derived(chipFor(repo.status)?.kind === 'behind')
 

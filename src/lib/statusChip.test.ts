@@ -5,7 +5,7 @@ import type { StatusResult } from './types'
 const base: StatusResult = {
   branch: 'main', localAhead: 0, remoteAhead: 0, revisionNumber: 1, localRevisionNumber: 1,
   remoteAvailable: true, remoteAuthorized: true,
-  mergeInProgress: false, stagedPending: false, files: [],
+  mergeInProgress: false, stagedPending: false, ignoredCount: 0, files: [],
 }
 
 describe('chipFor', () => {

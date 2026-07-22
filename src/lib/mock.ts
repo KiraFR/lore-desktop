@@ -1,4 +1,5 @@
 import { isPreviewableImage, stripTheirsSuffix } from './previewKind'
+import { parseIgnore, filterIgnored } from './loreIgnore'
 import { NON_FF_PUSH_SAMPLE } from './pushErrors'
 import type { AppConfig, Branch, ChangedFile, Commit, CommitFile, DiffLine, FileRevision, LockEntry, LoreApi, MergeConflict, MergePreview, OpProgress, PreviewData, RepoEntry, RepositoryInfo, StatusResult } from './types'
 
@@ -113,12 +114,18 @@ function seedFiles(): ChangedFile[] {
     { path: 'Source/Player/PlayerCharacter.h', action: 'modify', isBinary: false, size: 1204 },
     { path: 'Config/DefaultInput.ini', action: 'modify', isBinary: false, size: 512 },
     { path: 'Docs/old-notes.md', action: 'delete', isBinary: false, size: 0 },
-    // Matched by the mock .loreignore (Saved/ + *.tmp) — the store filters them
-    // out, which makes the ignore feature visible in the browser preview.
+    // Matched by MOCK_IGNORE_RULES (Saved/ + *.tmp) — getStatus filters them
+    // out like the real CLI does natively, which makes the "N ignored" segment
+    // visible in the browser preview.
     { path: 'Saved/autosave.tmp', action: 'add', isBinary: false, size: 4096 },
     { path: 'Saved/Logs/game.log', action: 'modify', isBinary: false, size: 12288 },
   ]
 }
+
+// Simulates the CLI's NATIVE .loreignore handling: `lore status --scan` reads
+// the repo-root file itself and pre-filters its output (see the loreignore
+// design spec addendum). The example content below stays internal to the mock.
+const MOCK_IGNORE_RULES = parseIgnore('# Editor junk\nSaved/\n*.tmp\n')
 
 // "Old" (repository-revision) sizes served by fileSizes, so the browser dev
 // exercises the same fire-and-forget enrichment as the real app (deltas pop
@@ -284,6 +291,9 @@ export const mock: LoreApi = {
       mergeConflictState = []
     }
     const s = stateFor(repoPath)
+    // Simulated NATIVE ignore: like the real CLI, the file list and the wire
+    // summary come out pre-filtered, and ignoredCount reports what was dropped.
+    const { kept, ignored } = filterIgnored(s.files, MOCK_IGNORE_RULES)
     return {
       branch: s.branch, localAhead: s.localAhead, remoteAhead: s.remoteAhead,
       revisionNumber: s.revisionNumber, localRevisionNumber: s.localRevisionNumber,
@@ -293,18 +303,16 @@ export const mock: LoreApi = {
       // `localStorage.setItem('loredesktop.mock.staged', '1')` in the browser
       // devtools to preview the staged chip; removeItem to clear it.
       stagedPending: mergeConflictState.length > 0 || localStorage.getItem('loredesktop.mock.staged') === '1',
-      // Seedé depuis les fichiers courants pour rester cohérent (spec P4 item 1).
+      // Seedé depuis les fichiers gardés pour rester cohérent (spec P4 item 1 ;
+      // le CLI natif ajuste lui aussi son summary après exclusion).
       summary: {
-        adds: s.files.filter((f) => f.action === 'add').length,
-        mods: s.files.filter((f) => f.action === 'modify' || f.action === 'move' || f.action === 'copy').length,
-        dels: s.files.filter((f) => f.action === 'delete').length,
+        adds: kept.filter((f) => f.action === 'add').length,
+        mods: kept.filter((f) => f.action === 'modify' || f.action === 'move' || f.action === 'copy').length,
+        dels: kept.filter((f) => f.action === 'delete').length,
       },
-      files: [...s.files],
+      ignoredCount: ignored.length,
+      files: [...kept],
     } as StatusResult
-  },
-  async readIgnoreFile(_repoPath: string) {
-    await delay(80)
-    return '# Editor junk\nSaved/\n*.tmp\n'
   },
   async fileSizes(_repoPath: string, paths: string[]) {
     await delay(400)

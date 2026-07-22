@@ -1,0 +1,10 @@
+{"tagName":"repositoryStatusRevision","data":{"repository":"019f333af5e073d28bb117ad1596784a","branch":"019f39559d9e7ca19b4335cf699f3fcb","branchName":"feature/test","revision":"bf9d4a3b8a0b18fd3498e343a59edc5e0d38f3b98d427443f2060f567a1ecffd","revisionNumber":25,"revisionStaged":"f8eb74067cf60228e28fc3dacdca1475860e43903db2e784235349a1ba545ff1","revisionMerged":"0000000000000000000000000000000000000000000000000000000000000000","revisionMergedParentBranch":"0000000000000000000000000000000000000000000000000000000000000000","revisionLocal":"bf9d4a3b8a0b18fd3498e343a59edc5e0d38f3b98d427443f2060f567a1ecffd","revisionLocalNumber":25,"revisionRemote":"0000000000000000000000000000000000000000000000000000000000000000","revisionRemoteNumber":0,"isLocalAhead":0,"isRemoteAhead":0,"remoteAvailable":0,"remoteAuthorized":0,"remoteBranchExist":0}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"Saved"}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"Saved"}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"scratch.tmp"}}
+{"tagName":"filterExclude","data":{"reason":0,"path":"Saved"}}
+{"tagName":"repositoryStatusFile","data":{"path":".loreignore","size":27,"action":"add","type":"file","flagStaged":false,"flagMerged":false,"flagConflict":false,"flagConflictUnresolved":false,"flagConflictAutomerged":false,"flagConflictMine":false,"flagConflictTheirs":false,"flagDirty":true,"fromPath":""}}
+{"tagName":"repositoryStatusSummary","data":{"adds":1,"deletes":0,"modifies":0,"moves":0,"copies":0}}
+{"tagName":"complete","data":{"status":0}}
