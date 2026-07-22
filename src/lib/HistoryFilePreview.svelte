@@ -109,7 +109,7 @@
 
 <style>
   .hpreview { flex: 1; overflow: auto; min-width: 0; border-left: 1px solid var(--border); }
-  .body { padding: 16px 18px; max-width: 720px; }
+  .body { padding: 16px 18px; }
   .head { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
   .ic { width: 34px; height: 34px; border-radius: 8px; background: var(--panel); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; }
   .ttl { min-width: 0; flex: 1; }

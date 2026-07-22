@@ -113,7 +113,7 @@
 </div>
 
 <style>
-  .locks { flex: 1; overflow: auto; padding: 18px; max-width: 760px; }
+  .locks { flex: 1; overflow: auto; padding: 18px; }
   .lhead { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .title { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
   .title :global(svg) { color: var(--text-muted); }

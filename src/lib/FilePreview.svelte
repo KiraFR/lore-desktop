@@ -153,7 +153,7 @@
   .preview { flex: 1; overflow: auto; min-width: 0; }
   .empty { height: 100%; display: grid; place-items: center; text-align: center; padding: 20px; }
   .empty .small { font-size: 12px; margin-top: 4px; }
-  .body { padding: 16px 18px; max-width: 720px; }
+  .body { padding: 16px 18px; }
   .head { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
   .lockwarn { display: flex; align-items: center; gap: 8px; background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 9px 12px; font-size: 12px; margin: 0 0 14px; }
   .ic { width: 34px; height: 34px; border-radius: 8px; background: var(--panel); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; }
