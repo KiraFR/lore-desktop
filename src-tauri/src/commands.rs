@@ -933,6 +933,13 @@ pub async fn lore_sign_in(server_url: String, auth_url: Option<String>) -> Resul
             cmd.arg("--auth-url").arg(a);
         }
         cmd.arg(&server_url);
+        // The SSO flow happens in the browser; the CLI console stays hidden
+        // (without this the installed GUI build pops a console window).
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
         let status = cmd.status().map_err(|e| format!("failed to launch lore login: {e}"))?;
         if status.success() { Ok(()) } else { Err("sign-in failed or was cancelled".to_string()) }
     })

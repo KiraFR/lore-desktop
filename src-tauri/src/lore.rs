@@ -62,6 +62,20 @@ use std::time::Duration;
 /// transport error) must never wedge a command indefinitely — it errors instead.
 const LORE_TIMEOUT: Duration = Duration::from_secs(45);
 
+/// One-shot `lore` invocation, window-less. Without CREATE_NO_WINDOW every
+/// call pops a console window in the installed GUI build — invisible under
+/// `tauri dev`, where the parent terminal absorbs the child consoles.
+fn lore_command(args: &[String]) -> Command {
+    let mut cmd = Command::new("lore");
+    cmd.args(args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 /// Run `lore <args> --json`, capturing stdout. `--json` is appended here so
 /// callers pass only the subcommand + options. The process runs on a helper
 /// thread with a timeout so a hung remote call returns an error rather than
@@ -72,7 +86,7 @@ pub fn run_lore(args: &[&str]) -> Result<Vec<LoreEvent>, String> {
     owned.push("--json".to_string());
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(Command::new("lore").args(&owned).output());
+        let _ = tx.send(lore_command(&owned).output());
     });
     let output = match rx.recv_timeout(LORE_TIMEOUT) {
         Ok(Ok(o)) => o,
@@ -92,7 +106,7 @@ pub fn run_lore_raw(args: &[&str]) -> Result<String, String> {
     let owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(Command::new("lore").args(&owned).output());
+        let _ = tx.send(lore_command(&owned).output());
     });
     match rx.recv_timeout(LORE_TIMEOUT) {
         Ok(Ok(o)) => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
