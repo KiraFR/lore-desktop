@@ -1,24 +1,52 @@
-# Build Windows installers (NSIS/MSI) and publish them to a draft GitHub
-# Release whenever a `v*` tag is pushed (or manually via workflow_dispatch).
+# Release: build the signed Windows installer + Tauri updater artifacts on a
+# `v*` tag and publish them (setup.exe, setup.exe.sig, latest.json) as a
+# GitHub release on THIS repo, using the workflow's GITHUB_TOKEN.
 #
-# Runs on windows-latest since Lore Desktop is Windows-first and
-# windows-latest runners already have WebView2 preinstalled.
+# The updater endpoint the app polls is:
+#   https://github.com/KiraFR/lore-desktop/releases/latest/download/latest.json
+#
+# Required repository secrets (set by Jimmy via `gh secret set`, never shared):
+#   TAURI_SIGNING_PRIVATE_KEY           minisign private key from `tauri signer generate`
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its passphrase (may be empty if keyless)
+#
+# See docs/superpowers/specs/2026-07-22-lore-desktop-auto-update-design.md.
 name: Release
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
-  contents: write # required so tauri-action can create/update the GitHub Release
+  contents: write # gh release create on this repo with the workflow GITHUB_TOKEN
 
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+
+      # Fail fast, before the (long) Rust build: the tag must match the app
+      # version. tauri.conf.json is the version source of truth (package.json
+      # stays at 0.0.0). make-latest-json.mjs re-checks this after the build.
+      - name: Check tag matches tauri.conf.json version
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$version" -ne $env:TAG) {
+            Write-Error "Tag $env:TAG does not match src-tauri/tauri.conf.json version $version. Bump the version in tauri.conf.json before tagging."
+          }
+
+      - name: Check signing secrets are configured
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            Write-Error "The TAURI_SIGNING_PRIVATE_KEY secret is not set. Without it 'tauri build' cannot produce the .sig updater artifact. Set it with: gh secret set TAURI_SIGNING_PRIVATE_KEY (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD)."
+          }
 
       - uses: actions/setup-node@v4
         with:
@@ -31,30 +59,65 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
-      # npm install (not npm ci): tolerant of the platform-optional-dep lock
-      # drift that npm ci rejects — see the CI workflow's note.
       - name: Install node dependencies
-        run: npm install --no-audit --no-fund
+        shell: pwsh
+        run: npm ci --no-audit --no-fund
 
-      - name: Build Tauri app and publish draft release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app (signed, with updater artifacts)
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # --- Optional: Tauri updater signing ---------------------------
-          # Uncomment and add these secrets to enable signed update
-          # artifacts consumed by the Tauri updater plugin.
-          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # --- Optional: Windows Authenticode code signing ----------------
-          # Uncomment and add these secrets to sign the .exe/.msi installers
-          # with a Windows code-signing certificate. Without this, the
-          # installers are unsigned and will trigger a Windows SmartScreen
-          # "unrecognized app" warning until enough users install it (or a
-          # cert is configured).
-          # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Lore Desktop ${{ github.ref_name }}"
-          releaseDraft: true
-          prerelease: false
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build
+
+      # Resolve the NSIS setup (its name contains spaces: "Lore Desktop_X.Y.Z_x64-setup.exe")
+      # and hard-fail if the minisign .sig is missing next to it.
+      - name: Locate installer and updater signature
+        id: assets
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            Write-Error "No NSIS setup found under src-tauri/target/release/bundle/nsis - did 'tauri build' succeed with the nsis bundle enabled?"
+          }
+          $sig = "$($setup.FullName).sig"
+          if (-not (Test-Path -LiteralPath $sig)) {
+            Write-Error "Missing updater signature $sig. 'tauri build' only emits it when bundle.createUpdaterArtifacts is enabled and the TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets are valid - check them."
+          }
+          Write-Host "setup: $($setup.FullName)"
+          "setup=$($setup.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sig=$sig" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Release notes = annotated tag message when present, else a default.
+      # Written to a file to sidestep any multiline/quoting issues.
+      - name: Extract release notes from the tag
+        id: notes
+        shell: pwsh
+        run: |
+          git fetch --force origin "refs/tags/$($env:TAG):refs/tags/$($env:TAG)" 2>$null
+          $notes = (git tag -l --format='%(contents)' $env:TAG | Out-String).Trim()
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "Lore Desktop $env:TAG" }
+          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          "notes_path=$notesPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Generate latest.json (Tauri updater manifest)
+        shell: pwsh
+        env:
+          SETUP: ${{ steps.assets.outputs.setup }}
+          SIG: ${{ steps.assets.outputs.sig }}
+          NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
+        run: |
+          node scripts/make-latest-json.mjs "$env:SETUP" "$env:SIG" "$env:TAG" --notes-file "$env:NOTES_PATH" --out latest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content latest.json
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SETUP: ${{ steps.assets.outputs.setup }}
+          SIG: ${{ steps.assets.outputs.sig }}
+          NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
+        run: |
+          gh release create "$env:TAG" --title "Lore Desktop $env:TAG" --notes-file "$env:NOTES_PATH" "$env:SETUP" "$env:SIG" "latest.json"
