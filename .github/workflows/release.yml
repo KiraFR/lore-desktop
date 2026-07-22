@@ -43,10 +43,31 @@ jobs:
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
             Write-Error "The TAURI_SIGNING_PRIVATE_KEY secret is not set. Without it 'tauri build' cannot produce the .sig updater artifact. Set it with: gh secret set TAURI_SIGNING_PRIVATE_KEY (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD)."
           }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERT_PFX_BASE64)) {
+            Write-Error "The WINDOWS_CERT_PFX_BASE64 secret is not set. Without it signtool cannot Authenticode-sign the binaries (bundle.windows.certificateThumbprint is configured). Set it with: gh secret set WINDOWS_CERT_PFX_BASE64 (and WINDOWS_CERT_PASSWORD)."
+          }
+
+      # Authenticode: import the studio's self-signed code-signing cert into the
+      # runner's user store; `tauri build` signs app.exe and the NSIS setup via
+      # bundle.windows.certificateThumbprint DURING bundling — before the
+      # minisign updater .sig is produced, so both signatures stay coherent.
+      - name: Import code-signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERT_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfxPath
+          Write-Host "Imported code-signing certificate $($cert.Thumbprint)"
 
       - uses: actions/setup-node@v4
         with:
