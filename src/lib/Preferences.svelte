@@ -150,7 +150,10 @@
   .seg button { padding: 3px 12px; font-size: 11.5px; border: none; border-radius: 0; background: transparent; color: var(--text-muted); }
   .seg button.active { background: var(--accent); color: var(--on-accent); }
   .seg button:hover:not(.active) { background: var(--panel-hover); color: var(--text); }
-  .toggle input { accent-color: var(--accent); flex: none; }
+  /* width:auto is load-bearing: flex:none resolves its basis to the global
+     `input { width: 100% }` (app.css), stretching the checkbox across the row
+     and crushing the label to 0. */
+  .toggle input { accent-color: var(--accent); flex: none; width: auto; }
   .ghostbtn { flex: none; padding: 4px 10px; font-size: 11.5px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
   .ghostbtn:hover { color: var(--text); background: var(--panel-hover); }
 </style>
