@@ -332,7 +332,11 @@ export const mock: LoreApi = {
         dels: kept.filter((f) => f.action === 'delete').length,
       },
       ignoredCount: ignored.length,
-      files: [...kept],
+      // Copies, like getLocks/getBranches: the real API deserializes fresh
+      // objects on every call — sharing the internal state's rows would let
+      // in-place mock mutations (setLock, restoreFile) alias the app's status
+      // and defeat the store's reference-preserving merge.
+      files: kept.map((f) => ({ ...f })),
     } as StatusResult
   },
   async fileSizes(_repoPath: string, paths: string[]) {

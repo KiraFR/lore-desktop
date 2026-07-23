@@ -13,11 +13,16 @@ export function sizeLookupPaths(files: ChangedFile[]): string[] {
  * Only modify/delete rows are enriched; paths missing from `sizes` (fetch
  * failed for that file, or the file vanished between status and file info)
  * are left untouched. Pure — used by the fire-and-forget enrichment.
+ * Reference-preserving: a row whose oldSize is already the reported value
+ * keeps its identity, and when NO row changes the input array is returned
+ * as-is (so downstream $effects keyed on file identity stay quiet).
  */
 export function mergeOldSizes(files: ChangedFile[], sizes: Record<string, number>): ChangedFile[] {
-  return files.map((f) =>
-    hasOldSide(f) && Object.hasOwn(sizes, f.path)
-      ? { ...f, oldSize: sizes[f.path] }
-      : f,
-  )
+  let changed = false
+  const out = files.map((f) => {
+    if (!hasOldSide(f) || !Object.hasOwn(sizes, f.path) || f.oldSize === sizes[f.path]) return f
+    changed = true
+    return { ...f, oldSize: sizes[f.path] }
+  })
+  return changed ? out : files
 }

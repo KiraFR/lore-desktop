@@ -35,4 +35,16 @@ describe('mergeOldSizes', () => {
     const out = mergeOldSizes([f('constructor', 'modify')], {})
     expect(out[0].oldSize).toBeUndefined()
   })
+  it('returns the same ARRAY when nothing changes (all values already merged)', () => {
+    const files = [{ ...f('a.txt', 'modify', 120), oldSize: 100 }, f('b.txt', 'add')]
+    expect(mergeOldSizes(files, { 'a.txt': 100 })).toBe(files)
+  })
+  it('keeps the identity of rows whose oldSize is already the reported value', () => {
+    const files = [{ ...f('a.txt', 'modify', 120), oldSize: 100 }, f('b.txt', 'delete')]
+    const out = mergeOldSizes(files, { 'a.txt': 100, 'b.txt': 3400 })
+    expect(out).not.toBe(files)
+    expect(out[0]).toBe(files[0])
+    expect(out[1]).not.toBe(files[1])
+    expect(out[1].oldSize).toBe(3400)
+  })
 })

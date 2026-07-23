@@ -3,6 +3,7 @@ import { session } from './session.svelte'
 import { clearThumbs } from './thumbs.svelte'
 import { toastError, toastAction, toastInfo } from './toast'
 import { mergeOldSizes, sizeLookupPaths } from './oldSizes'
+import { mergeStatus, annotateLocks } from './statusMerge'
 import { opProgress } from './opProgress.svelte'
 import { isNonFastForwardPush, errorMessage } from './pushErrors'
 import { setView } from './ui.svelte'
@@ -81,8 +82,12 @@ export async function refreshLocks(silent = false) {
   catch (e) { if (!silent) toastError("Couldn't load locks", e); return }
   locks.list = lockList
   if (repo.status) {
+    // Reference-preserving: rows whose holder didn't change keep their object
+    // identity (see statusMerge) — the background lock round after every
+    // status must not re-trigger the preview's identity-keyed effects.
     const holderByPath = new Map(lockList.map((l) => [l.path, l.holder]))
-    repo.status.files = repo.status.files.map((f) => ({ ...f, lockedBy: holderByPath.get(f.path) ?? null }))
+    const files = annotateLocks(repo.status.files, holderByPath)
+    if (files !== repo.status.files) repo.status.files = files
   }
 }
 
@@ -110,21 +115,36 @@ async function refreshFileSizes() {
   // newer refreshFileSizes call may have already landed out of order — only
   // the latest call may annotate the current status (paths that vanished
   // are ignored by the merge).
-  if (token === sizesToken && repo.status && session.config.currentRepo === path)
-    repo.status.files = mergeOldSizes(repo.status.files, sizes)
+  if (token === sizesToken && repo.status && session.config.currentRepo === path) {
+    const files = mergeOldSizes(repo.status.files, sizes)
+    if (files !== repo.status.files) repo.status.files = files
+  }
 }
+
+// The repo path `repo.status` currently belongs to — a repo switch must NOT
+// merge the new repo's status into the old one (identical paths across repos
+// would keep stale objects and enrichments).
+let statusPath: string | null = null
 
 // `silent` refreshes (e.g. the window-focus refresh) skip the `busy` flag so they
 // don't disable the action buttons or flash a loading state.
 export async function refreshStatus(silent = false) {
   const path = session.config.currentRepo
-  if (!path) { repo.status = null; return }
+  if (!path) { repo.status = null; statusPath = null; return }
   if (!silent) repo.busy = 'status'
   try {
     // .loreignore filtering is NATIVE: `lore status --scan` reads the repo-root
     // file itself, excludes the matched paths (negation `!pattern` included)
     // and reports them — status.ignoredCount carries the deduplicated count.
-    repo.status = await api.getStatus(path)
+    //
+    // Structural stability: fold the fresh status over the previous one so
+    // unchanged files (and an entirely unchanged status) keep their object
+    // identity — a no-op refresh (focus, coalesced notifications) then
+    // re-triggers NONE of the identity-keyed effects downstream (diff /
+    // media preview / file-history refetches, the visible preview stutter).
+    const fresh = await api.getStatus(path)
+    repo.status = mergeStatus(statusPath === path ? repo.status : null, fresh)
+    statusPath = path
     // Only wipe row thumbnails on an EXPLICIT refresh (repo switch, post-commit/
     // /sync). The silent window-focus refresh must NOT clear them, or every
     // refocus blanks and re-decodes the whole change list (visible flicker, and
