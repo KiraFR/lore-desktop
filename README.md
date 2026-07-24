@@ -1,8 +1,22 @@
 # Lore Desktop
 
-A desktop client for the [Lore](https://github.com/EpicGames/lore) VCS — sign in to a Lore server (+ SSO), pick a repository, review changes, commit, push, sync, and resolve merges without touching the CLI. Built with **Tauri v2 + Svelte 5 (runes) + TypeScript**. Windows-first.
+A desktop client for the [Lore](https://github.com/EpicGames/lore) VCS — sign in to a Lore server (+ SSO), pick a repository, review changes, commit, push, sync, and resolve merges without touching the CLI. Windows-first.
 
-The app is fully wired to a real `lore` binary: every action shells out to `lore … --json`, parses the NDJSON event stream, and drives the UI from it — there is no mock data path in production.
+## Install
+
+1. Download the latest `Lore.Desktop_x.y.z_x64-setup.exe` from the [releases page](https://github.com/KiraFR/lore-desktop/releases/latest) and run it.
+2. **Once per machine**, trust the studio's code-signing certificate so Windows and app-control tools accept the app and its updates (imports a public certificate only) — from an elevated PowerShell in a checkout or download of this repo:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\trust-studio-cert.ps1
+   ```
+
+3. Make sure the [`lore`](https://github.com/EpicGames/lore) CLI is installed and on your `PATH` — the app drives it for every operation.
+4. Launch the app, enter your team's Lore server URL (`lore://host:41337`), and finish sign-in in the browser (SSO).
+
+The app keeps itself up to date: when a new version is released, a banner offers **Install & restart** — one click and you're current. You can also check from **Preferences ▸ Support**.
+
+Requirements: Windows 10/11 with WebView2 (preinstalled on Windows 11), and network access to your Lore server.
 
 ## What it does
 
@@ -14,8 +28,10 @@ The app is fully wired to a real `lore` binary: every action shells out to `lore
 
 **Changes**
 - Working-tree file list: add / modify / delete / move / copy, binary hints, asset size deltas (old → new), a locked-by-teammate section.
+- `.loreignore` support: files excluded by the repo's ignore rules stay out of the list ("N ignored" in the summary).
+- Multi-select with keyboard navigation, bulk stage/unstage/lock/discard from the context menu.
 - Discard a file's working changes; per-file preview pane.
-- Commit selected files with a message; amend the last (unpushed) commit; undo the last local commit (its changes return to pending).
+- Commit selected files with a message; amend the last (unpushed) commit; undo the last local commit (its changes return to pending, with a warning when pending edits would be overwritten).
 
 **Push / Sync**
 - Push, with progress reporting; on a non-fast-forward refusal (remote diverged), a "Sync & push" recovery action chains sync then push.
@@ -24,7 +40,7 @@ The app is fully wired to a real `lore` binary: every action shells out to `lore
 
 **History**
 - Commit graph with per-branch lanes, paginated loading, and a client-side search box (message / author / short hash / revision number).
-- Per-file history and preview from the History view.
+- Per-file history and preview from the History view; restore a file to a past version.
 
 **Branches**
 - Local and remote-only sections, switch, create (based on any revision), archive.
@@ -46,46 +62,20 @@ Working-copy previews render inline instead of showing a generic icon:
 - 3D models (glTF/GLB, OBJ, FBX) via an orbiting three.js viewer.
 
 **Other**
-- Real-time notifications (a background `lore notification subscribe` sidecar) for teammate pushes and lock changes, surfaced as toasts.
+- Real-time notifications (teammate pushes and lock changes) surfaced as toasts.
 - "About repository" panel (id, remote URL, description, default branch, created date).
 - Light and dark themes.
-
-## Architecture
-
-- **`src/lib/types.ts`** — the `LoreApi` contract: every data operation the UI can perform, plus the shared types (`StatusResult`, `ChangedFile`, `Commit`, `Branch`, `MergeConflict`, `PreviewData`, `AppConfig`, …).
-- **`src/lib/api.ts`** — the app's single data boundary. At runtime it picks one implementation based on whether a Tauri context is present:
-  - **`src/lib/mock.ts`** — a stateful in-memory/`localStorage` fake implementing the exact same `LoreApi` contract, used only for the browser design loop (`npm run dev`).
-  - **`src/lib/tauri.ts`** — the real implementation, calling `@tauri-apps/api`'s `invoke` for each command.
-- **Svelte 5 rune stores** (`src/lib/*.svelte.ts`, e.g. `session.svelte.ts`, `repo.svelte.ts`, `ui.svelte.ts`, `opProgress.svelte.ts`, `repoHealth.svelte.ts`, `notifications.svelte.ts`, `thumbs.svelte.ts`) hold reactive app state; components in `src/lib/*.svelte` (`Changes`, `History`, `Merge`, `Locks`, `RepoSwitcher`, `TitleBar`, `AboutRepo`, …) consume them, wired together by `src/App.svelte`.
-- **Pure TS logic modules** (no Svelte, no Tauri) are split out wherever practical — `pushErrors.ts`, `mergeLogic.ts`, `historyFilter.ts`, `branchGrouping.ts`, `sizeFormat.ts`, `fileTypes.ts`, etc. — each with a `*.test.ts` next to it, so business logic is unit-testable under vitest without a Tauri or DOM runtime.
-- **Rust side** (`src-tauri/src/`):
-  - `commands.rs` — the `#[tauri::command]` entry points; each shells `lore <subcommand> --json` (or a streaming variant for long ops like clone/push/sync) and maps the CLI's NDJSON events into the DTOs the frontend expects.
-  - `lore.rs` — the process runner: spawns `lore`, parses its NDJSON stream, exposes both a one-shot and a streaming (progress-emitting) mode.
-  - `config.rs` — persists `AppConfig` (server URL, current/recent repos, display name) to disk.
-  - `notifications.rs` — manages a background `lore notification subscribe` child process and forwards its events to the webview.
-  - `preview.rs` — the working-copy preview pipeline: format decoding (DDS/PSD/EXR/HDR/Blender/`.uasset`/`.umap`), thumbnail generation, and an on-disk cache keyed by path + mtime + size.
 
 ## Develop
 
 ```bash
 npm install
-npm run dev        # browser design loop — http://localhost:5173, driven by the in-memory mock, no Rust needed
+npm run dev        # browser design loop — http://localhost:5173, driven by an in-memory mock, no Rust needed
 npm run tauri dev  # full app against a real `lore` CLI (needs the Rust toolchain + `lore` on PATH)
-npm test           # vitest — pure-logic and mock/contract tests
+npm test           # vitest
 npm run check      # svelte-check + tsc
-npm run build      # production web build
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri build
 ```
 
-`npm run dev` is the fast design-iteration loop: edit any `.svelte` file or `src/app.css` and see it live against the mock, with zero backend. The design system lives in `src/app.css` — CSS-variable tokens for color, spacing, and radius, with both light and dark palettes.
-
-`npm run tauri dev` runs the same UI inside the Tauri shell, wired to the real `lore` CLI — use this when a change touches `src-tauri/` or the actual repo behavior, not just layout/styling.
-
-## Requirements
-
-- The [`lore`](https://github.com/EpicGames/lore) CLI installed and on `PATH` — required for `npm run tauri dev` and any production build; the browser design loop (`npm run dev`) does not need it.
-- Rust toolchain, for building/running the Tauri shell.
-- Windows with WebView2 (the primary target platform).
-
-## The mock
-
-`src/lib/mock.ts` implements the exact `LoreApi` interface the real backend implements, so the browser design loop is a faithful stand-in: the same components, the same data shapes, the same state transitions — just backed by memory instead of a real repository.
+To release: bump the version in `src-tauri/tauri.conf.json`, tag `vX.Y.Z`, push the tag — CI builds, signs, and publishes the GitHub release that installed apps pick up automatically (see [scripts/README.md](scripts/README.md)).
