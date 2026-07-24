@@ -2671,7 +2671,7 @@ fn parse_hunk_header(line: &str) -> (u32, u32) {
 }
 
 /// Parse a unified-diff patch into structured lines with old/new line numbers
-/// (GitHub-Desktop-style gutters). The `---`/`+++` file headers are dropped; the
+/// (dual gutter columns). The `---`/`+++` file headers are dropped; the
 /// `+`/`-`/space prefix is stripped from `text` (the `kind` carries the marker).
 fn parse_diff(patch: &str) -> Vec<DiffLineDto> {
     let mut old_n: u32 = 0;

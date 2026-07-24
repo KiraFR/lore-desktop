@@ -1,6 +1,6 @@
 # Lore Desktop
 
-A GitHub-Desktop-style client for the [Lore](https://github.com/EpicGames/lore) VCS — sign in to a Lore server (+ SSO), pick a repository, review changes, commit, push, sync, and resolve merges without touching the CLI. Built with **Tauri v2 + Svelte 5 (runes) + TypeScript**. Windows-first.
+A desktop client for the [Lore](https://github.com/EpicGames/lore) VCS — sign in to a Lore server (+ SSO), pick a repository, review changes, commit, push, sync, and resolve merges without touching the CLI. Built with **Tauri v2 + Svelte 5 (runes) + TypeScript**. Windows-first.
 
 The app is fully wired to a real `lore` binary: every action shells out to `lore … --json`, parses the NDJSON event stream, and drives the UI from it — there is no mock data path in production.
 
